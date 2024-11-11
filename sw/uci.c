@@ -38,6 +38,8 @@ int parse_fen(board_t *board, const char** ptr) {
 
     memset(board->pieces, 0, sizeof(board->pieces));
     memset(&board->pieces_w, 0, sizeof(board->pieces_w));
+    board->kings = 0;
+
 
     for (int rank = 7; rank >= 0; --rank) {
         int file = 0;
@@ -70,6 +72,11 @@ int parse_fen(board_t *board, const char** ptr) {
                     case 'P':
                         piece = PAWN;
                         break;
+                    case 'k':
+                    case 'K':
+                        board->kings |= (rank * 8 + file) << (*fen == 'k' ? 6 : 0);
+                        board->pieces_w |= ((uint64_t) (*fen >= 'a')) << (rank * 8 + file);
+                        continue;
                 }
 
                 if (piece < 0) return PARSE_FEN_INVALID;
