@@ -53,12 +53,16 @@ inline bool do_capture(gamestate_t *gamestate, uint8_t dst) {
     return (bool) did_capture;
 }
 
+
+
 int pseudolegal_moves(gamestate_t *gamestate, move_t* moves) {
     static int init = 0;
     static uint64_t king_moves[64] = {0};
     static uint64_t knight_moves[64] = {0};
-    static uint64_t diagonals[64] = {0};
-    static uint64_t rook_moves[64] = {0};
+    static uint8_t occupancy_bounds[64][8] = {0};
+    // note: can be hardcoded into design in hardware
+    static uint8_t occupancy_diag[15][8] = {0};
+    static uint8_t occupancy_antidiag[15][8] = {0};
 
     if (!init) {
         for (int i = 0; i < 64; ++i) {
@@ -82,6 +86,26 @@ int pseudolegal_moves(gamestate_t *gamestate, move_t* moves) {
                 }
             }
             knight_moves[i] = move;
+        }
+
+        for (int occ = 0; occ < 64; ++occ) {
+            for (int f = 0; f < 8; ++f) {
+                int mask_lo = (1 << f) - 1;
+                int mask_hi = -(2 << f);
+
+                int lo = 31 - __builtin_clz(((occ << 1) & mask_lo) | 1);
+                int hi = __builtin_ctz(((occ << 1) & mask_hi) | 128);
+
+                occupancy_bounds[occ][f] = (hi << 3) | lo;
+            }
+        }
+
+        for (int diag = 0; diag < 15; ++diag) {
+            for (int rank = 0; rank < 8; ++rank) {
+                int file = diag - rank;
+                occupancy_diag[diag][rank] = 0 <= file && file < 8 ? file : 0xFF;
+                occupancy_antidiag[diag][rank] = 0 <= file && file < 8 ? 7 - file : 0xFF;
+            }
         }
     }
 
@@ -206,15 +230,83 @@ int pseudolegal_moves(gamestate_t *gamestate, move_t* moves) {
     }
 
     {
-        // rook moves
-        uint64_t rooks = gamestate->board.pieces[ROOK] & color;
+        // rook + queen moves
+        uint64_t rooks = (gamestate->board.pieces[ROOK] | gamestate->board.pieces[QUEEN]) & color;
         while (rooks != 0) {
             int src = CTZ64(rooks);
-            // int fw = occupied - (2ull << src);
-            // int bw = (1ull << src) - (occupied)
-            
+            int row = occupied >> (src & 0x38);
+            int rank_atk = occupancy_bounds[(row >> 1) & 0x3F][src & 0x07];
+
+            int file_occ = 0;
+            #pragma unroll
+            for (int i = 1; i < 7; ++i) {
+                file_occ |= ((int) (occupied >> (i * 8 + (src & 0x07))) & 0x1) << i;
+            }
+            int file_atk = occupancy_bounds[file_occ][src >> 3];
+
+            for (int i = rank_atk & 0x7; i <= (rank_atk >> 3); ++i) {
+                int dst = (src & 0x38) | i;
+                if (allies & (1ull << dst)) continue;
+                moves[m].src = src;
+                moves[m].dst = dst;
+                moves[m].special = SPECIAL_NONE;
+                ++m;
+            }
+
+            for (int i = file_atk & 0x7; i <= (file_atk >> 3); ++i) {
+                int dst = (i << 3) | (src & 0x07);
+                if (allies & (1ull << dst)) continue;
+                moves[m].src = src;
+                moves[m].dst = dst;
+                moves[m].special = SPECIAL_NONE;
+                ++m;
+            }
 
             rooks ^= 1ull << src;
+        }
+    }
+
+    {
+        // bishop + queen moves
+        uint64_t bishops = (gamestate->board.pieces[BISHOP] | gamestate->board.pieces[QUEEN]) & color;
+        while (bishops != 0) {
+            int src = CTZ64(bishops);
+            int diag = (src >> 3) + (src & 0x07);
+            int antidiag = (src >> 3) + 7 - (src & 0x07);
+
+            int diag_occ = 0;
+            int antidiag_occ = 0;
+            #pragma unroll
+            for (int i = 1; i < 7; ++i) {
+                int file = occupancy_diag[diag][i];
+                int antifile = occupancy_diag[antidiag][i];
+                diag_occ |= file < 8 ? (((int) (occupied >> (i * 8 + file)) & 0x1) << i) : 0;
+                antidiag_occ |= antifile < 8 ? (((int) (occupied >> (i * 8 + antifile)) & 0x1) << i) : 0;
+            }
+            int diag_atk = occupancy_bounds[diag_occ][src >> 3];
+            int antidiag_atk = occupancy_bounds[antidiag_occ][src >> 3];
+
+            for (int i =  diag_atk & 0x7; i <= (diag_atk >> 3); ++i) {
+                int file = diag - i;
+                int dst = (i << 3) | file;
+                if (file < 0 || file > 7 || allies & (1ull << dst)) continue;
+                moves[m].src = src;
+                moves[m].dst = dst;
+                moves[m].special = SPECIAL_NONE;
+                ++m;
+            }
+
+            for (int i = antidiag_atk & 0x7; i <= (antidiag_atk >> 3); ++i) {
+                int file = 7 - (diag - i);
+                int dst = (i << 3) | file;
+                if (file < 0 || file > 7 || allies & (1ull << dst)) continue;
+                moves[m].src = src;
+                moves[m].dst = dst;
+                moves[m].special = SPECIAL_NONE;
+                ++m;
+            }
+
+            bishops ^= 1ull << src;
         }
     }
 }
