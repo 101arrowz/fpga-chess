@@ -6,16 +6,6 @@
 #define __has_builtin(x) (0)
 #endif
 
-#if __has_builtin(__builtin_rotateleft64)
-#define ROTL64 __builtin_rotateleft64
-#define ROTR64 __builtin_rotateright64
-#elif __has_builtin(__builtin_stdc_rotate_left)
-#define ROTL64 __builtin_stdc_rotate_left
-#define ROTR64 __builtin_stdc_rotate_right
-#else
-#error Unsupported compiler
-#endif
-
 #if __has_builtin(__builtin_ctzll) && __has_builtin(__builtin_bswap64)
 #define CTZ64 __builtin_ctzll
 #define CTZ32 __builtin_ctzl
@@ -27,16 +17,11 @@
 #error Unsupported compiler
 #endif
 
-int search_moves(const gamestate_t *gamestate, best_moves_t *best_moves) {
-    // stub
-    return -1;
-}
-
-inline void update_white(gamestate_t *gamestate, uint64_t move_mask) {
+void update_white(gamestate_t *gamestate, uint64_t move_mask) {
     gamestate->board.pieces_w = (gamestate->board.ply & 1) ? (gamestate->board.pieces_w & ~move_mask) : (gamestate->board.pieces_w | move_mask);
 }
 
-inline bool do_capture(gamestate_t *gamestate, uint8_t dst) {
+bool do_capture(gamestate_t *gamestate, uint8_t dst) {
     int did_capture = 0;
 
     for (int i = 0; i < NB_PIECES; ++i) {
@@ -53,17 +38,14 @@ inline bool do_capture(gamestate_t *gamestate, uint8_t dst) {
     return (bool) did_capture;
 }
 
+static int init = 0;
+static uint64_t king_moves[64] = {0};
+static uint64_t knight_moves[64] = {0};
+static uint8_t occupancy_bounds[64][8] = {0};
+static uint64_t diags[15] = {0};
+static uint64_t antidiags[15] = {0};
 
-
-int pseudolegal_moves(gamestate_t *gamestate, move_t* moves) {
-    static int init = 0;
-    static uint64_t king_moves[64] = {0};
-    static uint64_t knight_moves[64] = {0};
-    static uint8_t occupancy_bounds[64][8] = {0};
-    // note: can be hardcoded into design in hardware
-    static uint8_t occupancy_diag[15][8] = {0};
-    static uint8_t occupancy_antidiag[15][8] = {0};
-
+void static_init() {
     if (!init) {
         for (int i = 0; i < 64; ++i) {
             uint64_t move = (1ull << i) | (((uint64_t) (i < 56) << i) << 8) | (((uint64_t) (i >= 8) << i) >> 8);
@@ -103,17 +85,56 @@ int pseudolegal_moves(gamestate_t *gamestate, move_t* moves) {
         for (int diag = 0; diag < 15; ++diag) {
             for (int rank = 0; rank < 8; ++rank) {
                 int file = diag - rank;
-                occupancy_diag[diag][rank] = 0 <= file && file < 8 ? file : 0xFF;
-                occupancy_antidiag[diag][rank] = 0 <= file && file < 8 ? 7 - file : 0xFF;
+                diags[diag] |= 0 <= file && file < 8 ? (1ull << (rank * 8 + file)) : 0;
+                antidiags[diag] |= 0 <= file && file < 8 ? (1ull << (rank * 8 + 7 - file)) : 0;
             }
         }
-    }
 
+        init = 1;
+    }
+}
+
+uint64_t rook_attacks(uint64_t occ, int src) {
+    uint64_t rank_atk = ((uint64_t) occupancy_bounds[((occ >> (src & 0x38)) >> 1) & 0x3F][src & 0x07]) << (src & 0x38);
+
+    uint64_t other_occ = occ & ~(1ull << src);
+    uint64_t file_mask = 0x0101010101010101ull << (src & 0x07);
+    uint64_t up_atk = (other_occ & file_mask) - (1ull << src);
+    // uint64_t down_atk = BS64(occ & file_mask) - ((0x1000000000000000ull >> (src & 0x38)) << 1);
+    uint64_t down_atk = BS64(other_occ & file_mask) - BS64(1ull << src);
+
+    return ((up_atk ^ down_atk) & file_mask) | rank_atk;
+}
+
+uint64_t bishop_attacks(uint64_t occ, int src) {
+    uint64_t other_occ = occ & ~(1ull << src);
+    int diag = (src >> 3) + (src & 0x07);
+
+    uint64_t diag_mask = diags[diag];
+    uint64_t antidiag_mask = antidiags[diag];
+
+    uint64_t nw_atk = (other_occ & diag_mask) - (1ull << src);
+    uint64_t se_atk = BS64(other_occ & diag_mask) - BS64(1ull << src);
+
+    uint64_t ne_atk = (other_occ & antidiag_mask) - (1ull << src);
+    uint64_t sw_atk = BS64(other_occ & antidiag_mask) - BS64(1ull << src);
+
+    return ((nw_atk ^ se_atk) & diag_mask) | ((ne_atk ^ sw_atk) & antidiag_mask);
+}
+
+uint64_t occupancy(board_t *board) {
+    uint64_t occupied = (1ull << (board->kings & 0x3F)) | (1ull << ((board->kings >> 6) & 0x3F));
+    for (int i = 0; i < NB_PIECES; ++i) occupied |= board->pieces[i];
+
+    return occupied;
+}
+
+int pseudolegal_moves(gamestate_t *gamestate, move_t* moves) {
+    static_init();
     int is_b = gamestate->board.ply & 1;
     uint64_t color = is_b ? ~gamestate->board.pieces_w : gamestate->board.pieces_w;
-    uint64_t occupied = (1ull << (gamestate->board.kings & 0x3F)) | (1ull << ((gamestate->board.kings >> 6) & 0x3F));
-    for (int i = 0; i < NB_PIECES; ++i) occupied |= gamestate->board.pieces[i];
 
+    uint64_t occupied = occupancy(&gamestate->board);
     uint64_t allies = occupied & color;
     uint64_t enemies = occupied & ~color;
 
@@ -234,32 +255,17 @@ int pseudolegal_moves(gamestate_t *gamestate, move_t* moves) {
         uint64_t rooks = (gamestate->board.pieces[ROOK] | gamestate->board.pieces[QUEEN]) & color;
         while (rooks != 0) {
             int src = CTZ64(rooks);
-            int row = occupied >> (src & 0x38);
-            int rank_atk = occupancy_bounds[(row >> 1) & 0x3F][src & 0x07];
+            uint64_t atk = rook_attacks(occupied, src) & ~allies;
 
-            int file_occ = 0;
-            #pragma unroll
-            for (int i = 1; i < 7; ++i) {
-                file_occ |= ((int) (occupied >> (i * 8 + (src & 0x07))) & 0x1) << i;
-            }
-            int file_atk = occupancy_bounds[file_occ][src >> 3];
+            while (atk != 0) {
+                int dst = CTZ64(atk);
 
-            for (int i = rank_atk & 0x7; i <= (rank_atk >> 3); ++i) {
-                int dst = (src & 0x38) | i;
-                if (allies & (1ull << dst)) continue;
                 moves[m].src = src;
                 moves[m].dst = dst;
                 moves[m].special = SPECIAL_NONE;
                 ++m;
-            }
 
-            for (int i = file_atk & 0x7; i <= (file_atk >> 3); ++i) {
-                int dst = (i << 3) | (src & 0x07);
-                if (allies & (1ull << dst)) continue;
-                moves[m].src = src;
-                moves[m].dst = dst;
-                moves[m].special = SPECIAL_NONE;
-                ++m;
+                atk ^= 1ull << dst;
             }
 
             rooks ^= 1ull << src;
@@ -271,44 +277,48 @@ int pseudolegal_moves(gamestate_t *gamestate, move_t* moves) {
         uint64_t bishops = (gamestate->board.pieces[BISHOP] | gamestate->board.pieces[QUEEN]) & color;
         while (bishops != 0) {
             int src = CTZ64(bishops);
-            int diag = (src >> 3) + (src & 0x07);
-            int antidiag = (src >> 3) + 7 - (src & 0x07);
+            uint64_t atk = bishop_attacks(occupied, src) & ~allies;
 
-            int diag_occ = 0;
-            int antidiag_occ = 0;
-            #pragma unroll
-            for (int i = 1; i < 7; ++i) {
-                int file = occupancy_diag[diag][i];
-                int antifile = occupancy_diag[antidiag][i];
-                diag_occ |= file < 8 ? (((int) (occupied >> (i * 8 + file)) & 0x1) << i) : 0;
-                antidiag_occ |= antifile < 8 ? (((int) (occupied >> (i * 8 + antifile)) & 0x1) << i) : 0;
-            }
-            int diag_atk = occupancy_bounds[diag_occ][src >> 3];
-            int antidiag_atk = occupancy_bounds[antidiag_occ][src >> 3];
+            while (atk != 0) {
+                int dst = CTZ64(atk);
 
-            for (int i =  diag_atk & 0x7; i <= (diag_atk >> 3); ++i) {
-                int file = diag - i;
-                int dst = (i << 3) | file;
-                if (file < 0 || file > 7 || allies & (1ull << dst)) continue;
                 moves[m].src = src;
                 moves[m].dst = dst;
                 moves[m].special = SPECIAL_NONE;
                 ++m;
-            }
 
-            for (int i = antidiag_atk & 0x7; i <= (antidiag_atk >> 3); ++i) {
-                int file = 7 - (diag - i);
-                int dst = (i << 3) | file;
-                if (file < 0 || file > 7 || allies & (1ull << dst)) continue;
-                moves[m].src = src;
-                moves[m].dst = dst;
-                moves[m].special = SPECIAL_NONE;
-                ++m;
+                atk ^= 1ull << dst;
             }
 
             bishops ^= 1ull << src;
         }
     }
+}
+
+int is_legal(gamestate_t *gamestate, move_t last_move) {
+    static_init();
+    int is_b = gamestate->board.ply & 1;
+    int king_pos = (gamestate->board.kings >> (is_b * 6)) & 0x3F;
+
+    return !is_check(&gamestate->board, king_pos, is_b) && (
+        last_move.special != SPECIAL_CASTLE ||
+        !is_check(&gamestate->board, ((king_pos & 0x38) | (last_move.dst < last_move.src ? 0x03 : 0x05)), is_b)
+    );
+}
+
+int is_check(board_t *board, int king, int is_b) {
+    uint64_t enemies = is_b ? board->pieces_w : ~board->pieces_w;
+    uint64_t occupied = occupancy(board);
+
+    uint64_t king_atk = king_moves[king] & (1ull << ((board->kings >> (!is_b * 6)) & 0x3F));
+    uint64_t knight_atk = knight_moves[king] & board->pieces[KNIGHT];
+    uint64_t rook_atk = rook_attacks(occupied, king) & (board->pieces[ROOK] | board->pieces[QUEEN]);
+    uint64_t bishop_atk = bishop_attacks(occupied, king) & (board->pieces[BISHOP] | board->pieces[QUEEN]);
+    uint64_t pawn_atk_mask = (((1ull << king) & 0x01010101010101FF) != 0 && (1ull << (king - 9))) |
+        (((1ull << king) & 0x10101010101010FF) != 0 && (1ull << (king - 7)));
+    uint64_t pawn_atk = pawn_atk_mask & board->pieces[PAWN];
+
+    return (king_atk | ((knight_atk | rook_atk | bishop_atk | pawn_atk) & enemies)) != 0;
 }
 
 int execute_move(gamestate_t *gamestate, move_t move) {
@@ -368,4 +378,10 @@ int execute_move(gamestate_t *gamestate, move_t move) {
     }
 
     return 0;
+}
+
+
+int search_moves(const gamestate_t *gamestate, best_moves_t *best_moves) {
+    // stub
+    return -1;
 }
