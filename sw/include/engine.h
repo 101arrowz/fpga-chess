@@ -25,10 +25,15 @@ typedef struct best_moves {
     uint8_t num_moves;
 } best_moves_t;
 
+typedef struct search_params {
+    int timeout_ms;
+} search_params_t;
+
 // for now, assume engine is stateless with regards to the game
 // later, may make it stateful (e.g. to keep past positions known)
-int search_moves(const gamestate_t *gamestate, best_moves_t *best_moves);
+int search_moves(const gamestate_t *gamestate, search_params_t params, best_moves_t *best_moves);
 // execute a move on the game state
 int execute_move(gamestate_t *gamestate, move_t move);
+uint64_t perft(const gamestate_t *gamestate, int depth);
 
 #endif
