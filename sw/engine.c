@@ -12,12 +12,12 @@
 
 #if __has_builtin(__builtin_ctzll) && __has_builtin(__builtin_bswap64) && __has_builtin(__builtin_popcountll)
 #define CTZ64 __builtin_ctzll
-#define CTZ32 __builtin_ctzl
+#define CTZ32 __builtin_ctz
 #define CLZ64 __builtin_clzll
-#define CLZ32 __builtin_clzl
+#define CLZ32 __builtin_clz
 #define BS64 __builtin_bswap64
 #define BS32 __builtin_bswap32
-#define POPCNT32 __builtin_popcountl
+#define POPCNT32 __builtin_popcount
 #define POPCNT64 __builtin_popcountll
 #else
 #error Unsupported compiler
@@ -47,15 +47,15 @@ bool do_capture(gamestate_t *gamestate, uint8_t dst) {
 static int init = 0;
 static uint64_t king_moves[64] = {0};
 static uint64_t knight_moves[64] = {0};
-static uint8_t occupancy_bounds[64][8] = {0};
+static uint8_t rank_attacks[64][8] = {0};
 static uint64_t diags[15] = {0};
 static uint64_t antidiags[15] = {0};
 
 void static_init() {
     if (!init) {
         for (int i = 0; i < 64; ++i) {
-            uint64_t move = (1ull << i) | (((uint64_t) (i < 56) << i) << 8) | (((uint64_t) (i >= 8) << i) >> 8);
-            uint64_t side_moves = (move >> ((i & 7) == 0)) | (move << ((i & 7) == 7));
+            uint64_t move = (1ull << i) | ((1ull << i) << 8) | ((1ull << i) >> 8);
+            uint64_t side_moves = (move >> ((i & 7) != 0)) | (move << ((i & 7) != 7));
 
             king_moves[i] = (move | side_moves) & ~(1ull << i);
         }
@@ -80,10 +80,10 @@ void static_init() {
                 int mask_lo = (1 << f) - 1;
                 int mask_hi = -(2 << f);
 
-                int lo = 31 - __builtin_clz(((occ << 1) & mask_lo) | 1);
-                int hi = __builtin_ctz(((occ << 1) & mask_hi) | 128);
+                int lo = 31 - CLZ32(((occ << 1) & mask_lo) | 1);
+                int hi = CTZ32(((occ << 1) & mask_hi) | 128);
 
-                occupancy_bounds[occ][f] = (hi << 3) | lo;
+                rank_attacks[occ][f] = (2 << hi) - (1 << lo);
             }
         }
 
@@ -100,7 +100,7 @@ void static_init() {
 }
 
 uint64_t rook_attacks(uint64_t occ, int src) {
-    uint64_t rank_atk = ((uint64_t) occupancy_bounds[((occ >> (src & 0x38)) >> 1) & 0x3F][src & 0x07]) << (src & 0x38);
+    uint64_t rank_atk = ((uint64_t) rank_attacks[((occ >> (src & 0x38)) >> 1) & 0x3F][src & 0x07]) << (src & 0x38);
 
     uint64_t other_occ = occ & ~(1ull << src);
     uint64_t file_mask = 0x0101010101010101ull << (src & 0x07);
@@ -108,15 +108,17 @@ uint64_t rook_attacks(uint64_t occ, int src) {
     // uint64_t down_atk = BS64(occ & file_mask) - ((0x1000000000000000ull >> (src & 0x38)) << 1);
     uint64_t down_atk = BS64(other_occ & file_mask) - BS64(1ull << src);
 
-    return ((up_atk ^ down_atk) & file_mask) | rank_atk;
+    // return ((up_atk ^ down_atk) & file_mask) | rank_atk;
+    return ((up_atk ^ BS64(down_atk)) & file_mask) | rank_atk;
 }
 
 uint64_t bishop_attacks(uint64_t occ, int src) {
     uint64_t other_occ = occ & ~(1ull << src);
     int diag = (src >> 3) + (src & 0x07);
+    int antidiag = (src >> 3) + 7 - (src & 0x07);
 
     uint64_t diag_mask = diags[diag];
-    uint64_t antidiag_mask = antidiags[diag];
+    uint64_t antidiag_mask = antidiags[antidiag];
 
     uint64_t nw_atk = (other_occ & diag_mask) - (1ull << src);
     uint64_t se_atk = BS64(other_occ & diag_mask) - BS64(1ull << src);
@@ -124,7 +126,7 @@ uint64_t bishop_attacks(uint64_t occ, int src) {
     uint64_t ne_atk = (other_occ & antidiag_mask) - (1ull << src);
     uint64_t sw_atk = BS64(other_occ & antidiag_mask) - BS64(1ull << src);
 
-    return ((nw_atk ^ se_atk) & diag_mask) | ((ne_atk ^ sw_atk) & antidiag_mask);
+    return ((nw_atk ^ BS64(se_atk)) & diag_mask) | ((ne_atk ^ BS64(sw_atk)) & antidiag_mask);
 }
 
 uint64_t occupancy(const board_t *board) {
@@ -162,14 +164,14 @@ int pseudolegal_moves(const gamestate_t *gamestate, move_t* moves) {
 
         int castle_rights = (gamestate->board.castle >> (is_b * 2)) & 0x3;
 
-        if ((castle_rights & 1) && ((occupied >> (is_b * 7)) & 0x60) == 0) {
+        if ((castle_rights & 1) && ((occupied >> (is_b * 0x38)) & 0x60) == 0) {
             moves[m].src = king_pos;
             moves[m].dst = (king_pos & 0x38) | (0x6);
             moves[m].special = SPECIAL_CASTLE;
             ++m;
         }
 
-        if ((castle_rights & 2) && ((occupied >> (is_b * 7)) & 0x0D) == 0) {
+        if ((castle_rights & 2) && ((occupied >> (is_b * 0x38)) & 0x0D) == 0) {
             moves[m].src = king_pos;
             moves[m].dst = (king_pos & 0x38) | (0x2);
             moves[m].special = SPECIAL_CASTLE;
@@ -209,6 +211,7 @@ int pseudolegal_moves(const gamestate_t *gamestate, move_t* moves) {
             int cap = (8 - is_b * 16);
             int can_promote = 7 - ((src + cap) >> 3) == is_b * 7;
             int can_double = ((src - cap) >> 3) == is_b * 7;
+            int is_ep_rank = (src >> 3) == (4 - is_b);
             int m_initial = m;
 
             // can assume forward is always in bounds; otherwise invalid board
@@ -227,22 +230,24 @@ int pseudolegal_moves(const gamestate_t *gamestate, move_t* moves) {
             }
 
             if ((src & 7) != 0) {
-                int is_capture = (enemies >> (src + cap - 1)) == 1;
+                int is_capture = (enemies >> (src + cap - 1)) & 1;
 
-                if (is_capture || ((gamestate->board.en_passant & 16) != 0 && (gamestate->board.en_passant & 7) == (src & 7) - 1)) {
+                if (is_capture || (is_ep_rank && ((gamestate->board.en_passant & 8) != 0 && (gamestate->board.en_passant & 7) == (src & 7) - 1))) {
                     moves[m].src = src;
                     moves[m].dst = src + cap - 1;
                     moves[m].special = is_capture ? SPECIAL_NONE : SPECIAL_EN_PASSANT;
+                    ++m;
                 }
             }
 
             if ((src & 7) != 7) {
-                int is_capture = (enemies >> (src + cap + 1)) == 1;
+                int is_capture = (enemies >> (src + cap + 1)) & 1;
 
-                if (is_capture || ((gamestate->board.en_passant & 16) != 0 && (gamestate->board.en_passant & 7) == (src & 7) + 1)) {
+                if (is_capture || (is_ep_rank && ((gamestate->board.en_passant & 8) != 0 && (gamestate->board.en_passant & 7) == (src & 7) + 1))) {
                     moves[m].src = src;
                     moves[m].dst = src + cap + 1;
                     moves[m].special = is_capture ? SPECIAL_NONE : SPECIAL_EN_PASSANT;
+                    ++m;
                 }
             }
 
@@ -310,54 +315,89 @@ int pseudolegal_moves(const gamestate_t *gamestate, move_t* moves) {
 
 int is_check(board_t *board, int king, int is_b) {
     uint64_t enemies = is_b ? board->pieces_w : ~board->pieces_w;
-    uint64_t occupied = occupancy(board);
+    uint64_t occupied = (occupancy(board) & ~(1ull << ((board->kings >> (is_b * 6)) & 0x3F))) | (1ull << king);
 
     uint64_t king_atk = king_moves[king] & (1ull << ((board->kings >> (!is_b * 6)) & 0x3F));
     uint64_t knight_atk = knight_moves[king] & board->pieces[KNIGHT];
     uint64_t rook_atk = rook_attacks(occupied, king) & (board->pieces[ROOK] | board->pieces[QUEEN]);
     uint64_t bishop_atk = bishop_attacks(occupied, king) & (board->pieces[BISHOP] | board->pieces[QUEEN]);
-    uint64_t pawn_atk_mask = (((1ull << king) & 0x01010101010101FF) != 0 && (1ull << (king - 9))) |
-        (((1ull << king) & 0x10101010101010FF) != 0 && (1ull << (king - 7)));
+
+    uint64_t pawn_atk_mask = ((((uint64_t) ((king & 0x07) != 0)) << king) >> 1) | ((((uint64_t) ((king & 0x07) != 7)) << king) << 1);
+    pawn_atk_mask = is_b ? (pawn_atk_mask >> 8) : (pawn_atk_mask << 8);
+
     uint64_t pawn_atk = pawn_atk_mask & board->pieces[PAWN];
 
     return (king_atk | ((knight_atk | rook_atk | bishop_atk | pawn_atk) & enemies)) != 0;
 }
 
+void dbg_board(board_t *board) {
+    for (int rank = 7; rank >= 0; --rank) {
+        for (int file = 0; file < 8; ++file) {
+            int sq = 8 * rank + file;
+
+            int piece_type = NB_ALL_PIECES;
+            int color_b = (board->pieces_w >> sq) & 1;
+            for (piece_t p = 0; p < NB_PIECES; ++p) {
+                if (board->pieces[p] & (1ull << sq)) {
+                    piece_type = p;
+                    break;
+                }
+            }
+
+            if (sq == (board->kings & 0x3F) || sq == (board->kings >> 6)) piece_type = KING;
+
+            static char names[2][NB_ALL_PIECES + 1] = {
+                {'N', 'B', 'R', 'Q', 'P', 'K', ' '},
+                {'n', 'b', 'r', 'q', 'p', 'k', ' '},
+            };
+
+            printf("%c ", names[1 ^ color_b][piece_type]);
+        }
+        printf("\n");
+    }
+}
+
 int is_legal(gamestate_t *gamestate, move_t last_move) {
     static_init();
-    int is_b = gamestate->board.ply & 1;
-    int king_pos = (gamestate->board.kings >> (is_b * 6)) & 0x3F;
+    int was_b = (gamestate->board.ply & 1) ^ 1;
+    int king_pos = (gamestate->board.kings >> (was_b * 6)) & 0x3F;
 
-    return !is_check(&gamestate->board, king_pos, is_b) && (
+    return !is_check(&gamestate->board, king_pos, was_b) && (
         last_move.special != SPECIAL_CASTLE ||
-        !is_check(&gamestate->board, ((king_pos & 0x38) | (last_move.dst < last_move.src ? 0x03 : 0x05)), is_b)
+        // disallow castling out of check or through check
+        // note: the fact the board state isn't quite the same (rook in wrong spot) is OK for our current design
+        (!is_check(&gamestate->board, last_move.src, was_b) && !is_check(&gamestate->board, ((king_pos & 0x38) | (last_move.dst < last_move.src ? 0x03 : 0x05)), was_b))
     );
 }
 
 int execute_move(gamestate_t *gamestate, move_t move) {
-    gamestate->board.en_passant = 0;
+    bool is_b = gamestate->board.ply & 1;
+    int king = ((gamestate->board.kings >> (is_b * 6)) & 0x3F);
 
-    for (int i = 0; i < 2; ++i) {
-        if (move.src == ((gamestate->board.kings >> (i * 6)) & 0x3F)) {
-            gamestate->board.kings = (gamestate->board.kings & ~(0x3F << (i * 6))) | (move.dst << (i * 6));
-            update_white(gamestate, 1ull << move.dst);
-            gamestate->board.ply50 = do_capture(gamestate, move.dst) ? 0 : +gamestate->board.ply50 + 1;
-            int dx = (int) (move.dst & 7) - (int) (move.src & 7);
+    if (move.src == king) {
+        gamestate->board.en_passant = 0;
+        update_white(gamestate, 1ull << move.dst);
+        bool captured = do_capture(gamestate, move.dst);
 
-            if (gamestate->engine_debug) {
-                // TODO: verify move legality
-            }
+        gamestate->board.kings = (gamestate->board.kings & ~(0x3F << (is_b * 6))) | (move.dst << (is_b * 6));
+        gamestate->board.castle &= ~(0x3 << (is_b * 2));
+        gamestate->board.ply50 = captured ? 0 : +gamestate->board.ply50 + 1;
 
-            if (move.special == SPECIAL_CASTLE || (move.special == SPECIAL_UNKNOWN && (dx > 1 || dx < -1))) {
-                uint8_t rook_src = (move.src & 56) | (move.dst < move.src ? 0 : 7);
-                uint8_t rook_dst = (move.src & 56) | (move.dst < move.src ? 3 : 5);
-                gamestate->board.pieces[ROOK] = (gamestate->board.pieces[ROOK] & ~(1ull << rook_src)) | (1ull << rook_dst);
-                update_white(gamestate, 1ull << rook_dst);
-            }
+        int dx = (int) (move.dst & 7) - (int) (move.src & 7);
 
-            ++gamestate->board.ply;
-            return 0;
+        if (gamestate->engine_debug) {
+            // TODO: verify move legality
         }
+
+        if (move.special == SPECIAL_CASTLE || (move.special == SPECIAL_UNKNOWN && (dx > 1 || dx < -1))) {
+            uint8_t rook_src = (move.src & 56) | (move.dst < move.src ? 0 : 7);
+            uint8_t rook_dst = (move.src & 56) | (move.dst < move.src ? 3 : 5);
+            gamestate->board.pieces[ROOK] = (gamestate->board.pieces[ROOK] & ~(1ull << rook_src)) | (1ull << rook_dst);
+            update_white(gamestate, 1ull << rook_dst);
+        }
+
+        ++gamestate->board.ply;
+        return 0;
     }
 
     int piece_type = -1;
@@ -376,7 +416,9 @@ int execute_move(gamestate_t *gamestate, move_t move) {
     bool did_capture = do_capture(gamestate, move.dst);
 
     ++gamestate->board.ply;
-    gamestate->board.ply50 = did_capture ? 0 : gamestate->board.ply50 + 1;
+    gamestate->board.ply50 = did_capture || piece_type == PAWN ? 0 : gamestate->board.ply50 + 1;
+    gamestate->board.en_passant = (move.dst & 7) | ((piece_type == PAWN && abs(move.dst - move.src) == 16) << 3);
+    gamestate->board.castle &= ~(((piece_type == ROOK && (move.src >> 3) == (7 * is_b)) && (((move.src & 0x07) == 0 || (move.src & 0x07) == 7) + ((move.src & 0x07) == 0))) << (2 * is_b));
 
     if (move.special & SPECIAL_PROMOTE) {
         // requires piece_type == PAWN; todo verify
@@ -385,12 +427,10 @@ int execute_move(gamestate_t *gamestate, move_t move) {
         return 0;
     }
 
-
     gamestate->board.pieces[piece_type] = (gamestate->board.pieces[piece_type] & ~(1ull << move.src)) | (1ull << move.dst);
     if (move.special == SPECIAL_EN_PASSANT || (move.special == SPECIAL_UNKNOWN && piece_type == PAWN && (move.dst & 7) != (move.src & 7) && !did_capture)) {
         // should always return true; todo verify
-        do_capture(gamestate, (gamestate->board.ply & 1) ? ((move.dst + 8) & 63) : ((move.dst - 8) & 63));
-        gamestate->board.en_passant = (move.dst & 7) | 16;
+        do_capture(gamestate, is_b ? ((move.dst + 8) & 63) : ((move.dst - 8) & 63));
         return 0;
     }
 
@@ -543,6 +583,22 @@ int static_eval(gamestate_t *gamestate) {
     return (gamestate->board.ply & 1) ? -eval : eval;
 }
 
+void serialize_lan_move2(const move_t move, char* out) {
+    out[0] = 'a' + (move.src & 7);
+    out[1] = '1' + (move.src >> 3);
+    out[2] = 'a' + (move.dst & 7);
+    out[3] = '1' + (move.dst >> 3);
+
+    // TODO: extra handling needed for castling/etc.?
+    if (move.special & SPECIAL_PROMOTE) {
+        char promo[4] = {[KNIGHT] = 'n', [BISHOP] = 'b', [ROOK] = 'r', [QUEEN] = 'q'};
+        out[4] = promo[move.special & 3];
+        out[5] = '\0';
+    } else {
+        out[4] = '\0';
+    }
+}
+
 uint64_t perft(const gamestate_t *gamestate, int depth) {
     if (depth <= 0) return 1;
 
@@ -550,13 +606,13 @@ uint64_t perft(const gamestate_t *gamestate, int depth) {
     gamestate_t gs_next;
 
     int num_moves = pseudolegal_moves(gamestate, pl_moves);
-    int children = 0;
+    uint64_t children = 0;
+
     for (int i = 0; i < num_moves; ++i) {
         memcpy(&gs_next, gamestate, sizeof(gamestate_t));
-
         assert(execute_move(&gs_next, pl_moves[i]) == 0);
-        if (!is_legal(&gs_next, pl_moves[i])) continue;
 
+        if (!is_legal(&gs_next, pl_moves[i])) continue;
         children += perft(&gs_next, depth - 1);
     }
 
@@ -594,7 +650,7 @@ int negamax(const gamestate_t *gamestate, struct search_state *st, int alpha, in
         else eval = -negamax(&gs_next, st, -beta, -alpha, depth - 1);
 
         if (eval > alpha) alpha = eval;
-        if (alpha >= beta) break;
+        // if (alpha >= beta) break;
     }
 
     return alpha;
@@ -604,7 +660,7 @@ int cmp_engine_move(const void *a, const void *b) {
     engine_move_t *am = (engine_move_t*) a;
     engine_move_t *bm = (engine_move_t*) b;
 
-    return am->eval - bm->eval;
+    return bm->eval - am->eval;
 }
 
 int search_moves(const gamestate_t *gamestate, search_params_t params, best_moves_t *best_moves) {
@@ -622,6 +678,7 @@ int search_moves(const gamestate_t *gamestate, search_params_t params, best_move
         int move_evals[MAX_MOVES];
         gamestate_t gs_next;
 
+        printf("%i\n", initial_depth);
         int num_moves = pseudolegal_moves(gamestate, pl_moves);
         // TODO: sort moves (by static_eval? or a faster heuristic)
 
