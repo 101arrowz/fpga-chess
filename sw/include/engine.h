@@ -27,6 +27,7 @@ typedef struct best_moves {
 
 typedef struct search_params {
     int timeout_ms;
+    int max_depth;
 } search_params_t;
 
 // for now, assume engine is stateless with regards to the game

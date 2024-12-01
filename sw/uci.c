@@ -41,7 +41,6 @@ int parse_fen(board_t *board, const char** ptr) {
     memset(&board->pieces_w, 0, sizeof(board->pieces_w));
     board->kings = 0;
 
-
     for (int rank = 7; rank >= 0; --rank) {
         int file = 0;
 
@@ -206,7 +205,7 @@ int uci_start(FILE *in, FILE *out) {
     best_moves_t moves;
     const char* uci_delim = " \f\n\r\t\v";
 
-    while ((line_len = getline(&linebuf, &line_size, in))) {
+    while ((line_len = getline(&linebuf, &line_size, in)) >= 0) {
         char* sts;
         char* tok = strtok_r(linebuf, uci_delim, &sts);
         if (!tok) continue;
@@ -236,19 +235,25 @@ int uci_start(FILE *in, FILE *out) {
         } else if (!strcmp(tok, "position")) {
             if ((tok = strtok_r(NULL, uci_delim, &sts)) == NULL) continue;
             if (!strcmp(tok, "fen")) {
-                if ((tok = strtok_r(NULL, uci_delim, &sts)) == NULL) continue;
-                if (!parse_fen(&gs.board, (const char**) &tok)) continue;
+                char* fen_loc = tok + 4;
+                while (strchr(uci_delim, *fen_loc)) ++fen_loc;
+                if (parse_fen(&gs.board, (const char**) &fen_loc)) {
+                    fprintf(out, "info invalid fen\n");
+                    continue;
+                }
                 // TODO: verify
                 gs.board.checkmate = 0;
+                tok = strtok_r(fen_loc, uci_delim, &sts);
             } else if (!strcmp(tok, "startpos")) {
                 const char* fen = STARTPOS_FEN;
                 assert(!parse_fen(&gs.board, &fen));
                 gs.board.checkmate = 0;
+                tok = strtok_r(NULL, uci_delim, &sts);
             } else {
                 continue;
             }
 
-            if ((tok = strtok_r(NULL, uci_delim, &sts)) == NULL) continue;
+            if (tok == NULL) continue;
             if (!strcmp(tok, "moves")) {
                 while ((tok = strtok_r(NULL, uci_delim, &sts)) != NULL) {
                     move_t move = parse_lan_move((const char**) &tok);
@@ -258,6 +263,7 @@ int uci_start(FILE *in, FILE *out) {
                 }
             }
         } else if (!strcmp(tok, "go")) {
+            search_params_t params = {.timeout_ms = 1000, .max_depth = -1};
             if ((tok = strtok_r(NULL, uci_delim, &sts)) != NULL) {
                 if (!strcmp(tok, "perft")) {
                     int depth = 64;
@@ -269,10 +275,14 @@ int uci_start(FILE *in, FILE *out) {
                     }
                     ;
                     continue;
+                } else if (!strcmp(tok, "depth")) {
+                    if ((tok = strtok_r(NULL, uci_delim, &sts)) != NULL) params.max_depth = atoi(tok);
+                } else if (!strcmp(tok, "timeout")) {
+                    if ((tok = strtok_r(NULL, uci_delim, &sts)) != NULL) params.timeout_ms = atoi(tok);
                 }
             }
             gs.engine_debug = debug_mode;
-            if (search_moves(&gs, (search_params_t){ .timeout_ms = 1000 }, &moves)) continue;
+            if (search_moves(&gs, params, &moves)) continue;
 
             char move_name[6];
 

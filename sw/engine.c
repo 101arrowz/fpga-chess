@@ -313,7 +313,7 @@ int pseudolegal_moves(const gamestate_t *gamestate, move_t* moves) {
     return m;
 }
 
-int is_check(board_t *board, int king, int is_b) {
+int is_check(const board_t *board, int king, int is_b) {
     uint64_t enemies = is_b ? board->pieces_w : ~board->pieces_w;
     uint64_t occupied = (occupancy(board) & ~(1ull << ((board->kings >> (is_b * 6)) & 0x3F))) | (1ull << king);
 
@@ -362,12 +362,12 @@ int is_legal(gamestate_t *gamestate, move_t last_move) {
     int was_b = (gamestate->board.ply & 1) ^ 1;
     int king_pos = (gamestate->board.kings >> (was_b * 6)) & 0x3F;
 
-    return !is_check(&gamestate->board, king_pos, was_b) && (
+    return (gamestate->board.checkmate >> (was_b ^ 1)) || (!is_check(&gamestate->board, king_pos, was_b) && (
         last_move.special != SPECIAL_CASTLE ||
         // disallow castling out of check or through check
         // note: the fact the board state isn't quite the same (rook in wrong spot) is OK for our current design
         (!is_check(&gamestate->board, last_move.src, was_b) && !is_check(&gamestate->board, ((king_pos & 0x38) | (last_move.dst < last_move.src ? 0x03 : 0x05)), was_b))
-    );
+    ));
 }
 
 int execute_move(gamestate_t *gamestate, move_t move) {
@@ -397,7 +397,7 @@ int execute_move(gamestate_t *gamestate, move_t move) {
         }
 
         ++gamestate->board.ply;
-        return 0;
+        return (int) captured;
     }
 
     int piece_type = -1;
@@ -431,10 +431,10 @@ int execute_move(gamestate_t *gamestate, move_t move) {
     if (move.special == SPECIAL_EN_PASSANT || (move.special == SPECIAL_UNKNOWN && piece_type == PAWN && (move.dst & 7) != (move.src & 7) && !did_capture)) {
         // should always return true; todo verify
         do_capture(gamestate, is_b ? ((move.dst + 8) & 63) : ((move.dst - 8) & 63));
-        return 0;
+        return 1;
     }
 
-    return 0;
+    return (int) did_capture;
 }
 
 #define MAX_STACK (64)
@@ -535,7 +535,26 @@ int* piece_locs[NB_ALL_PIECES][2] = {
     [KING] = {king_eval, king_eval_endgame},
 };
 
-int static_eval(gamestate_t *gamestate) {
+static move_t moveh[10000];
+static int moved = 0;
+
+void serialize_lan_move2(const move_t move, char* out) {
+    out[0] = 'a' + (move.src & 7);
+    out[1] = '1' + (move.src >> 3);
+    out[2] = 'a' + (move.dst & 7);
+    out[3] = '1' + (move.dst >> 3);
+
+    // TODO: extra handling needed for castling/etc.?
+    if (move.special & SPECIAL_PROMOTE) {
+        char promo[4] = {[KNIGHT] = 'n', [BISHOP] = 'b', [ROOK] = 'r', [QUEEN] = 'q'};
+        out[4] = promo[move.special & 3];
+        out[5] = '\0';
+    } else {
+        out[4] = '\0';
+    }
+}
+
+int static_eval(const gamestate_t *gamestate) {
     int eval = 0;
 
     // material + positional advantage
@@ -580,23 +599,19 @@ int static_eval(gamestate_t *gamestate) {
     );
     eval += castle_bonus;
 
-    return (gamestate->board.ply & 1) ? -eval : eval;
-}
+    // if (eval > 900 || eval < -900) {
+    //     printf("BIG EVAL: %i\n", eval);
+    //     for (int i = 0; i < moved; ++i) {
+    //         char mn[6];
+    //         serialize_lan_move2(moveh[i], mn);
+    //         printf("%s ", mn);
+    //     }
+    //     printf("\n");
+    //     dbg_board(&gamestate->board);
+    //     exit(0);
+    // }
 
-void serialize_lan_move2(const move_t move, char* out) {
-    out[0] = 'a' + (move.src & 7);
-    out[1] = '1' + (move.src >> 3);
-    out[2] = 'a' + (move.dst & 7);
-    out[3] = '1' + (move.dst >> 3);
-
-    // TODO: extra handling needed for castling/etc.?
-    if (move.special & SPECIAL_PROMOTE) {
-        char promo[4] = {[KNIGHT] = 'n', [BISHOP] = 'b', [ROOK] = 'r', [QUEEN] = 'q'};
-        out[4] = promo[move.special & 3];
-        out[5] = '\0';
-    } else {
-        out[4] = '\0';
-    }
+    return eval;
 }
 
 uint64_t perft(const gamestate_t *gamestate, int depth) {
@@ -610,7 +625,7 @@ uint64_t perft(const gamestate_t *gamestate, int depth) {
 
     for (int i = 0; i < num_moves; ++i) {
         memcpy(&gs_next, gamestate, sizeof(gamestate_t));
-        assert(execute_move(&gs_next, pl_moves[i]) == 0);
+        assert(execute_move(&gs_next, pl_moves[i]) >= 0);
 
         if (!is_legal(&gs_next, pl_moves[i])) continue;
         children += perft(&gs_next, depth - 1);
@@ -630,30 +645,105 @@ int timed_out(const struct search_state *st) {
     return (cur.tv_sec - st->start_time.tv_sec) * 1000000 + (cur.tv_usec - st->start_time.tv_usec) >= st->timeout_us;
 }
 
+int sort_moves(void* data, const void* a, const void* b) {
+    move_t l = *((move_t*) a);
+    move_t r = *((move_t*) b);
+    board_t* board = (board_t*) data;
+    uint64_t enemies = occupancy(board) & ((board->ply & 1) ? board->pieces_w : ~board->pieces_w);
+    int enemy_king = (board->kings >> (6 * (board->ply & 1))) & 0x3F;
+
+    int net = 0;
+    for (piece_t p = 0; p < NB_PIECES; ++p) {
+        net += ((((board->pieces[p] & enemies) >> r.dst) & 1) - (((board->pieces[p] & enemies) >> l.dst) & 1)) * piece_weights[p];
+    }
+    net += ((r.dst == enemy_king) - (l.dst == enemy_king)) * piece_weights[KING];
+
+    return net;
+}
+
+#define MAX_QUIESCE (10)
+
 int negamax(const gamestate_t *gamestate, struct search_state *st, int alpha, int beta, int depth) {
     move_t pl_moves[MAX_MOVES];
     gamestate_t gs_next;
 
+    // printf("%i %i\n", depth, moved);
+    // dbg_board(&gamestate->board);
+
+    // 0 by default for stalemate
+    int score = -32767;
+
+    if (depth <= 0) {
+        int cur_eval = (1 - 2 * (gamestate->board.ply & 1)) * static_eval(gamestate);
+        // for (int i = 0; i < moved; ++i) {
+        //     char mn[6];
+        //     serialize_lan_move2(moveh[i], mn);
+        //     printf("%s ", mn);
+        // }
+        // printf("; qeval = %i (beta = %i)\n", cur_eval, beta);
+        if (depth <= -MAX_QUIESCE || cur_eval > beta) return cur_eval;
+        if (cur_eval > alpha) alpha = cur_eval;
+        score = cur_eval;
+    }
+
+    int in_check = is_check(&gamestate->board, (gamestate->board.kings >> ((gamestate->board.ply & 1) * 6)) & 0x3F, gamestate->board.ply & 1);
+
     int num_moves = pseudolegal_moves(gamestate, pl_moves);
     // TODO: sort moves (by static_eval? or a faster heuristic)
+    // TODO: stalemate
+    qsort_r(pl_moves, num_moves, sizeof(move_t), (board_t*) &gamestate->board, sort_moves);
 
+    int num_checked = 0;
     for (int i = 0; !timed_out(st) && i < num_moves; ++i) {
         memcpy(&gs_next, gamestate, sizeof(gamestate_t));
 
-        assert(execute_move(&gs_next, pl_moves[i]) == 0);
-        if (!is_legal(&gs_next, pl_moves[i])) continue;
-
+        int move_exec = execute_move(&gs_next, pl_moves[i]);
+        assert(move_exec >= 0);
+        // if (moved > 0 && moved == 1 && moveh[moved - 1].src == 0x1B && moveh[moved - 1].dst == 0x3F) {
+        //     for (int i = 0; i < moved; ++i) {
+        //         char mn[6];
+        //         serialize_lan_move2(moveh[i], mn);
+        //         printf("%s ", mn);
+        //     }
+        //     printf("\nDBGA %i %i %i %i %i %i %i\n", pl_moves[i].dst, pl_moves[i].special, (1 - 2 * (gamestate->board.ply & 1)) * static_eval(&gs_next), num_moves, alpha, beta, depth);
+        //     dbg_board(&gs_next.board);
+        // }
+        // if (moved > 0 && moved == 2 && moveh[moved - 1].src == 0x3A && moveh[moved - 1].dst == 0x3F) {
+        //     for (int i = 0; i < moved; ++i) {
+        //         char mn[6];
+        //         serialize_lan_move2(moveh[i], mn);
+        //         printf("%s ", mn);
+        //     }
+        //     printf("\nDBGC %i %i %i %i %i %i %i\n", pl_moves[i].dst, pl_moves[i].special, (1 - 2 * (gamestate->board.ply & 1)) * static_eval(&gs_next), num_moves, alpha, beta, depth);
+        //     dbg_board(&gs_next.board);
+        // }
+        if ((depth <= 0 && !in_check && move_exec == 0) || !is_legal(&gs_next, pl_moves[i])) continue;
+        ++num_checked;
+        moveh[moved++] = pl_moves[i];
         int eval;
         if (gs_next.board.ply50 >= 50) eval = 0;
-        else if (gs_next.board.checkmate) eval = 32767;
-        else if (depth <= 0) eval = static_eval(&gs_next);
+        else if (gs_next.board.checkmate >> (gs_next.board.ply & 1)) eval = 32767;
         else eval = -negamax(&gs_next, st, -beta, -alpha, depth - 1);
+        --moved;
+
+        // if (moved > 0 && moveh[moved - 1].src == 0x1B && moveh[moved - 1].dst == 0x3F) {
+        //     printf("DBGB %i %i %i %i %i %i\n", pl_moves[i].dst, pl_moves[i].special, eval, num_moves, alpha, beta);
+        //     dbg_board(&gs_next.board);
+        // }
 
         if (eval > alpha) alpha = eval;
-        // if (alpha >= beta) break;
+        if (eval > score) score = eval;
+        if (alpha > beta) break;
     }
 
-    return alpha;
+    // for (int i = 0; i < moved; ++i) {
+    //     char mn[6];
+    //     serialize_lan_move2(moveh[i], mn);
+    //     printf("%s ", mn);
+    // }
+    // printf("; eval = %i (beta = %i)\n", score, beta);
+
+    return depth > 0 && num_checked == 0 && !in_check ? 0 : score;
 }
 
 int cmp_engine_move(const void *a, const void *b) {
@@ -668,38 +758,41 @@ int search_moves(const gamestate_t *gamestate, search_params_t params, best_move
 
     struct search_state st;
     gettimeofday(&st.start_time, NULL);
-    st.timeout_us = params.timeout_ms < 0 ? UINT64_MAX : params.timeout_ms * 1000;
+    st.timeout_us = params.timeout_ms < 0 || params.max_depth >= 0 ? UINT64_MAX : params.timeout_ms * 1000;
 
-    for (int initial_depth = 0; initial_depth < MAX_STACK; ++initial_depth) {
+    for (int initial_depth = 0; initial_depth < MAX_STACK && (params.max_depth < 0 || initial_depth <= params.max_depth); ++initial_depth) {
         int alpha = -32767;
         int beta = 32767;
 
+        if (gamestate->engine_debug) {
+            printf("searching depth %i\n", initial_depth);
+        }
         move_t pl_moves[MAX_MOVES];
         int move_evals[MAX_MOVES];
         gamestate_t gs_next;
 
-        printf("%i\n", initial_depth);
         int num_moves = pseudolegal_moves(gamestate, pl_moves);
         // TODO: sort moves (by static_eval? or a faster heuristic)
 
         for (int i = 0; !timed_out(&st) && i < num_moves; ++i) {
             memcpy(&gs_next, gamestate, sizeof(gamestate_t));
-
-            assert(execute_move(&gs_next, pl_moves[i]) == 0);
+            assert(execute_move(&gs_next, pl_moves[i]) >= 0);
             if (!is_legal(&gs_next, pl_moves[i])) {
                 move_evals[i] = -32768;
                 continue;
             }
 
+            moveh[moved++] = pl_moves[i];
             int eval;
             if (gs_next.board.ply50 >= 50) eval = 0;
             else if (gs_next.board.checkmate) eval = 32767;
-            else if (initial_depth <= 0) eval = static_eval(&gs_next);
+            else if (initial_depth <= 0) eval = (1 - 2 * (gamestate->board.ply & 1)) * static_eval(&gs_next);
             else eval = -negamax(&gs_next, &st, -beta, -alpha, initial_depth);
             move_evals[i] = eval;
+            --moved;
 
             if (eval > alpha) alpha = eval;
-            if (alpha >= beta) break;
+            if (alpha > beta) break;
         }
 
         if (timed_out(&st) && initial_depth > 0) break;
@@ -714,6 +807,16 @@ int search_moves(const gamestate_t *gamestate, search_params_t params, best_move
         best_moves->num_moves = m;
 
         qsort(best_moves->moves, m, sizeof(engine_move_t), &cmp_engine_move);
+
+        if (gamestate->engine_debug) {
+            for (int i = 0; i < m; ++i) {
+                char move_name[6];
+                serialize_lan_move2(best_moves->moves[i].move, move_name);
+
+                printf("info (depth %i) move %3i: %s (eval = %i)\n", initial_depth, i, move_name, best_moves->moves[i].eval);
+            }
+        }
+
     }
 
     return 0;
