@@ -8,18 +8,26 @@ typedef enum piece {
     BISHOP = 1,
     ROOK = 2,
     QUEEN = 3,
-
     // allow knight-queen to fit in 2 bits (e.g. for promotions)
-    PAWN = 4
+    NB_STD_PIECES,
+
+    PAWN = 4,
+    NB_PIECES = 5,
+
+    // kings aren't included as pieces by default
+    KING = 5,
+    NB_ALL_PIECES = 6
 } piece_t;
 
 typedef struct board {
     // bitboards for each piece
-    uint64_t pieces[5] /* : 64 */;
+    uint64_t pieces[NB_PIECES] /* : 64 */;
     // which pieces are white
     uint64_t pieces_w /* : 64 */;
     // king positions; black = kings >> 6, white = kings & 63
     uint16_t kings: 12;
+    // checkmate flags; black = checkmate >> 1, white = checkmate & 1
+    uint8_t checkmate: 2;
     // allowed en-passant file on the next move; valid = ep_next >> 3, file = ep_next & 7
     uint8_t en_passant: 4;
     // castling rights; black = castle >> 2, white = castle & 3; queenside = rights >> 1, kingside = rights & 1
