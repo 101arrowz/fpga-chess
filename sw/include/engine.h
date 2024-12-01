@@ -35,6 +35,7 @@ typedef struct search_params {
 int search_moves(const gamestate_t *gamestate, search_params_t params, best_moves_t *best_moves);
 // execute a move on the game state
 int execute_move(gamestate_t *gamestate, move_t move);
+// perft correctness test
 uint64_t perft(const gamestate_t *gamestate, int depth);
 
 #endif

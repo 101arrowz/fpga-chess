@@ -2,7 +2,8 @@ project('river-sw', 'c')
 
 sources = [
     'uci.c',
-    'engine.c'
+    'engine.c',
+    'shared.c'
 ]
 
 inc = include_directories('include')
