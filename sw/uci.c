@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <unistd.h>
 
 #include "board.h"
 #include "uci.h"
@@ -76,7 +77,10 @@ int uci_start(FILE *in, FILE *out) {
                     move_t move = parse_lan_move((const char**) &tok);
                     if (move.special == SPECIAL_UNKNOWN) break;
                     if (move.special == SPECIAL_NONE) move.special = SPECIAL_UNKNOWN;
-                    if (execute_move(&gs, move)) break;
+                    if (execute_move(&gs, move) < 0) {
+                        fprintf(out, "info invalid moves\n");
+                        continue;
+                    }
                 }
             }
         } else if (!strcmp(tok, "go")) {
@@ -96,6 +100,12 @@ int uci_start(FILE *in, FILE *out) {
                     if ((tok = strtok_r(NULL, uci_delim, &sts)) != NULL) params.max_depth = atoi(tok);
                 } else if (!strcmp(tok, "timeout")) {
                     if ((tok = strtok_r(NULL, uci_delim, &sts)) != NULL) params.timeout_ms = atoi(tok);
+                } else {
+                    // standardized UCI commands
+                    do {
+                        // TODO: implement
+                        break;
+                    } while ((tok = strtok_r(NULL, uci_delim, &sts)) != NULL);
                 }
             }
             gs.engine_debug = debug_mode;
