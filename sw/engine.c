@@ -392,7 +392,7 @@ int execute_move(gamestate_t *gamestate, move_t move) {
     ++gamestate->board.ply;
     gamestate->board.ply50 = did_capture || piece_type == PAWN ? 0 : gamestate->board.ply50 + 1;
     gamestate->board.en_passant = (move.dst & 7) | ((piece_type == PAWN && abs(move.dst - move.src) == 16) << 3);
-    gamestate->board.castle &= ~(((piece_type == ROOK && (move.src >> 3) == (7 * is_b)) && (((move.src & 0x07) == 0 || (move.src & 0x07) == 7) + ((move.src & 0x07) == 0))) << (2 * is_b));
+    gamestate->board.castle &= ~(((piece_type == ROOK && (move.src >> 3) == (7 * is_b)) ? ((move.src & 0x07) == 0 || (move.src & 0x07) == 7) + ((move.src & 0x07) == 0) : 0) << (2 * is_b));
 
     if (move.special & SPECIAL_PROMOTE) {
         // requires piece_type == PAWN; todo verify
@@ -547,13 +547,6 @@ int static_eval(const gamestate_t *gamestate) {
     int bishop_pair_bonus = 80 * bishop_pair_delta;
     eval += bishop_pair_bonus;
 
-    // castling advantage
-    int castle_bonus = 20 * (
-        (gamestate->board.castle & 1) + ((gamestate->board.castle >> 1) & 1) -
-        ((gamestate->board.castle >> 2) & 1) - (gamestate->board.castle >> 3)
-    );
-    eval += castle_bonus;
-
     return eval;
 }
 
@@ -613,7 +606,7 @@ int negamax(const gamestate_t *gamestate, struct search_state *st, int alpha, in
     int score = -32767;
     if (depth <= 0) {
         int cur_eval = (1 - 2 * (gamestate->board.ply & 1)) * static_eval(gamestate);
-        if (depth <= -MAX_QUIESCE || cur_eval >= beta) return cur_eval;
+        if (depth <= -MAX_QUIESCE || cur_eval > beta) return cur_eval;
         if (cur_eval > alpha) alpha = cur_eval;
         score = cur_eval;
     }
@@ -638,10 +631,12 @@ int negamax(const gamestate_t *gamestate, struct search_state *st, int alpha, in
         if (gs_next.board.ply50 >= 50) eval = 0;
         else if (gs_next.board.checkmate >> (gs_next.board.ply & 1)) eval = 32767;
         else eval = -negamax(&gs_next, st, -beta, -alpha, depth - 1);
+        // mate finding: avoid longer mate paths by giving worse eval for longer time-to-mate
+        if (eval > 32700) eval -= 1;
 
         if (eval > alpha) alpha = eval;
         if (eval > score) score = eval;
-        if (alpha >= beta) break;
+        if (alpha > beta) break;
     }
 
     return depth > 0 && num_checked == 0 && !in_check ? 0 : score;
@@ -691,7 +686,7 @@ int search_moves(const gamestate_t *gamestate, search_params_t params, best_move
             move_evals[i] = eval;
 
             if (eval > alpha) alpha = eval;
-            if (alpha >= beta) break;
+            if (alpha > beta) break;
         }
 
         if (timed_out(&st) && initial_depth > 0) break;
