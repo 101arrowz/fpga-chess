@@ -1,0 +1,34 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2023.2 (win64) Build 4029153 Fri Oct 13 20:14:34 MDT 2023
+| Date         : Tue Dec  3 17:35:12 2024
+| Host         : DESKTOP-4EQVLHR running 64-bit major release  (build 9200)
+| Command      : report_utilization -file obj/post_synth_util.rpt -hierarchical -hierarchical_depth 4
+| Design       : top_level
+| Device       : xc7s50csga324-1
+| Speed File   : -1
+| Design State : Synthesized
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++---------------+---------------+------------+------------+---------+------+-----+--------+--------+------------+
+|    Instance   |     Module    | Total LUTs | Logic LUTs | LUTRAMs | SRLs | FFs | RAMB36 | RAMB18 | DSP Blocks |
++---------------+---------------+------------+------------+---------+------+-----+--------+--------+------------+
+| top_level     |         (top) |       1145 |       1145 |       0 |    0 | 993 |      0 |      0 |          0 |
+|   (top_level) |         (top) |          1 |          1 |       0 |    0 |   0 |      0 |      0 |          0 |
+|   reciever    |  uart_receive |         29 |         29 |       0 |    0 |  31 |      0 |      0 |          0 |
+|   transmitter | uart_transmit |         27 |         27 |       0 |    0 |  21 |      0 |      0 |          0 |
+|   uci         |   uci_handler |       1088 |       1088 |       0 |    0 | 941 |      0 |      0 |          0 |
+|     (uci)     |   uci_handler |       1088 |       1088 |       0 |    0 | 941 |      0 |      0 |          0 |
+|     executor  | move_executor |          0 |          0 |       0 |    0 |   0 |      0 |      0 |          0 |
++---------------+---------------+------------+------------+---------+------+-----+--------+--------+------------+
+
+
