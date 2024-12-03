@@ -89,7 +89,7 @@ def uci_runner():
     sim = os.getenv("SIM", "icarus")
     proj_path = Path(__file__).resolve().parent.parent
     sys.path.append(str(proj_path / "sim" / "model"))
-    sources = [proj_path / "hdl" / "cocotb_only" / "types.sv", proj_path / "hdl" / "move_executor.sv", proj_path / "hdl" / "cocotb_only" / "uci_handler.sv"]
+    sources = [proj_path / "hdl" / "types_1.sv", proj_path / "hdl" / "move_executor.sv", proj_path / "hdl" / "cocotb_only" / "uci_handler.sv"]
     # sources += [proj_path / "hdl" / "bto7s.sv"] #uncomment this if you make bto7s module its own file
     build_test_args = ["-Wall"]
     parameters = {} #setting parameter to a short amount (for testing)

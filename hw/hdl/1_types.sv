@@ -14,18 +14,19 @@ typedef enum logic[2:0] {
     SPECIAL_PROMOTE_QUEEN = 3'b111
 } move_special_t;
 
-typedef struct {
-    logic [4:0][63:0] pieces = 0;
-    logic [63:0] pieces_w = 0;
-    logic [5:0] king_w = 0;
-    logic [5:0] king_b = 0;
-    logic checkmate_w=0;
-    logic checkmate_b=0;
-    logic[7:0] en_passant=0;
-    logic[7:0] castle=0;//Not sure how this is encoded, so not sure how many bits are required
-    logic[15:0] ply=0;
-    logic[7:0] ply50=0;
+typedef struct packed {
+    logic [4:0][63:0] pieces;
+    logic [63:0] pieces_w;
+    logic [5:0] king_w;
+    logic [5:0] king_b;
+    logic checkmate_w;
+    logic checkmate_b;
+    logic[3:0] en_passant;
+    logic[3:0] castle;
+    logic[14:0] ply;
+    logic[6:0] ply50;
 } board_t;
+
 typedef struct packed  {
     logic[2:0] src_col;
     logic[2:0] src_row;
