@@ -1,0 +1,6 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1733524194" />
+    <testcase name="test_a" classname="test_uci" file="c:\Users\disup\Programming\62050\fpga-chess\hw\sim\test_uci.py" lineno="13" time="0.6906330585479736" sim_time_ns="10220.001" ratio_time="14798.018822740854" />
+  </testsuite>
+</testsuites>

@@ -14,13 +14,17 @@ typedef enum logic[2:0] {
     SPECIAL_PROMOTE_QUEEN = 3'b111
 } move_special_t;
 
+typedef struct packed  {
+    logic[2:0] row;
+    logic[2:0] col;
+} coord_t;
+
 typedef struct packed {
     logic [4:0][63:0] pieces;
     logic [63:0] pieces_w;
-    logic [5:0] king_w;
-    logic [5:0] king_b;
-    logic checkmate_w;
-    logic checkmate_b;
+    coord_t king_w;
+    coord_t king_b;
+    logic[1:0] checkmate;
     logic[3:0] en_passant;
     logic[3:0] castle;
     logic[14:0] ply;
@@ -28,9 +32,7 @@ typedef struct packed {
 } board_t;
 
 typedef struct packed  {
-    logic[2:0] src_col;
-    logic[2:0] src_row;
-    logic[2:0] dst_col;
-    logic[2:0] dst_row;
+    coord_t src;
+    coord_t dst;
     move_special_t special;
 } move_t;

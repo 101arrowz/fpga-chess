@@ -43,7 +43,7 @@ async def test_a(dut):
         dut.info_in_valid=0
         await wait(1)
     async def request_bestmove(src_col, src_row, dst_col, dst_row, special):
-        dut.best_move_in=special|(dst_row<<3)|(dst_col<<6)|(src_row<<9)|(src_col<<12)
+        dut.best_move_in=special|(dst_col<<3)|(dst_row<<6)|(src_col<<9)|(src_row<<12)
         dut.best_move_in_valid=1
         await wait(1)
         dut.best_move_in.src_col=0
@@ -89,7 +89,7 @@ def uci_runner():
     sim = os.getenv("SIM", "icarus")
     proj_path = Path(__file__).resolve().parent.parent
     sys.path.append(str(proj_path / "sim" / "model"))
-    sources = [proj_path / "hdl" / "types_1.sv", proj_path / "hdl" / "move_executor.sv", proj_path / "hdl" / "cocotb_only" / "uci_handler.sv"]
+    sources = [proj_path / "hdl" / "1_types.sv", proj_path / "hdl" / "move_executor.sv", proj_path / "hdl" / "cocotb_only" / "uci_handler.sv"]
     # sources += [proj_path / "hdl" / "bto7s.sv"] #uncomment this if you make bto7s module its own file
     build_test_args = ["-Wall"]
     parameters = {} #setting parameter to a short amount (for testing)
