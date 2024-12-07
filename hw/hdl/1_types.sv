@@ -22,8 +22,7 @@ typedef struct packed  {
 typedef struct packed {
     logic [4:0][63:0] pieces;
     logic [63:0] pieces_w;
-    coord_t king_w;
-    coord_t king_b;
+    coord_t[1:0] kings;
     logic[1:0] checkmate;
     logic[3:0] en_passant;
     logic[3:0] castle;

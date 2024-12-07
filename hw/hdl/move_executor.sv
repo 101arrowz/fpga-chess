@@ -66,14 +66,14 @@ module move_executor
          pieces2[i] = pieces[i]&(~move_mask);
          ret_board.pieces=pieces2;
       end
-      king_captured={move.dst==board.king_b, move.dst==board.king_w};
+      king_captured={move.dst==board.kings[1], move.dst==board.kings[0]};
 
       captured = (|captured_piece)|king_captured[0]|king_captured[1];
       ret_board.checkmate=board.checkmate|king_captured;
       //
       ret_board.ply50 = (captured || is_piece[4]) ? 0 : (board.ply50 + 1);
 
-      if ((move.src == board.king_w) || (move.src == board.king_b)) begin
+      if ((move.src == board.kings[0]) || (move.src == board.kings[1])) begin
          //iVerilog giving syntax error when using signed, so have to do it the scuffed way :)
          logic[3:0] dx;
          dx = move.dst.col - move.src.col;
@@ -82,10 +82,10 @@ module move_executor
          end
          ret_board.en_passant = 0;
          if(is_b) begin
-            ret_board.king_b = move.dst;
+            ret_board.kings[1] = move.dst;
             ret_board.castle[3:2]=0;
          end else begin
-            ret_board.king_w = move.dst;
+            ret_board.kings[0] = move.dst;
             ret_board.castle[1:0]=0;
          end
 

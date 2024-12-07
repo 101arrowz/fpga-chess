@@ -34,7 +34,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
     output logic char_out_valid
     );
     localparam new_line = 8'b0000_1010;
-    localparam board_t start_board = {};
+    localparam board_t start_board = 0;// = {};
     /*typedef struct packed {
     logic [4:0][63:0] pieces;
     logic [63:0] pieces_w;
