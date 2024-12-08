@@ -88,8 +88,7 @@ module move_executor
             ret_board.kings[0] = move.dst;
             ret_board.castle[1:0]=0;
          end
-
-         if (move.special == SPECIAL_CASTLE || (move.special == SPECIAL_UNKNOWN && (dx > 1))) begin
+         if (move.special == SPECIAL_CASTLE || ((move.special == SPECIAL_UNKNOWN) && (dx > 1))) begin
                coord_t rook_src;
                coord_t rook_dst;
                logic [63:0] rook_dst_mask;

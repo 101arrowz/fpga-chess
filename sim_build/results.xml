@@ -1,6 +1,6 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1733689715" />
-    <testcase name="test_a" classname="test_uci" file="c:\Users\disup\Programming\62050\fpga-chess\hw\sim\test_uci.py" lineno="13" time="0.8128857612609863" sim_time_ns="10590.001" ratio_time="13027.662070956067" />
+    <property name="random_seed" value="1733692458" />
+    <testcase name="test_a" classname="test_uci" file="c:\Users\disup\Programming\62050\fpga-chess\hw\sim\test_uci.py" lineno="15" time="4.849790096282959" sim_time_ns="83390.001" ratio_time="17194.55880449607" />
   </testsuite>
 </testsuites>

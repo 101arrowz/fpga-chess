@@ -169,7 +169,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                             cur_move.src.row = charbuff_new[3]-"1";
                             cur_move.dst.col = charbuff_new[2]-"a"; 
                             cur_move.dst.row = charbuff_new[1]-"1";
-                            cur_move.special=SPECIAL_NONE;
+                            cur_move.special=SPECIAL_UNKNOWN;
                         end else if(charbuff_new[6]==0) begin
                             cur_move.src.col = charbuff_new[5]-"a";
                             cur_move.src.row = charbuff_new[4]-"1";
@@ -180,7 +180,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                                 "b": cur_move.special=SPECIAL_PROMOTE_BISHOP;
                                 "r": cur_move.special=SPECIAL_PROMOTE_ROOK;
                                 "q": cur_move.special=SPECIAL_PROMOTE_QUEEN;
-                                default: cur_move.special=SPECIAL_UNKNOWN;
+                                default: cur_move.special=SPECIAL_NONE;
                             endcase
                         end
                         if((charbuff_new[5]==0)||(charbuff_new[6]==0)) begin

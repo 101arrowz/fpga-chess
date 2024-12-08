@@ -9,6 +9,8 @@ from cocotb.clock import Clock
 from cocotb.triggers import Timer, ClockCycles, RisingEdge, FallingEdge, ReadOnly
 from cocotb.utils import get_sim_time as gst
 from cocotb.runner import get_runner
+import chess
+from chess.pgn import read_game
 
 @cocotb.test()
 async def test_a(dut):
@@ -39,7 +41,7 @@ async def test_a(dut):
                     piece="Q"
                 elif((pieces>>(ind)>>256)&1):
                     piece="P"
-                elif(kings&255==ind or (kings>>6)&255==ind):
+                elif((kings&63==ind) or ((kings>>6)&63==ind)):
                     piece="K"
                 else:
                     esc="\033[0m"
@@ -114,11 +116,15 @@ async def test_a(dut):
 
     
     print(''.join(read_string))"""
-    moves=["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1g1", "f8e7", "d2d4", "e5d4", "f3d4", "e7c5", "c2c3"]
-    for i in range(len(moves)):
-        print("Move", i)
-        await print_command("move " + moves[i])
-        await wait(20)
+    proj_path = Path(__file__).resolve().parent.parent
+    with open(proj_path / "sim" / "test.pgn") as pgn:
+        game = read_game(pgn)
+        board = game.board()
+        moves = [move.uci() for move in game.mainline_moves()]
+        for i in range(len(moves)):
+            print("Move", i, ":", moves[i])
+            await print_command("move " + moves[i])
+            await wait(20)
 
 
 
