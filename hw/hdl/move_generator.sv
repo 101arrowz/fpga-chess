@@ -4,7 +4,7 @@
 
 module king_moves(
     input coord_t sq_in,
-    output [63:0] mask_out
+    output logic [63:0] mask_out
 );
     logic [99:0] full_mask;
 
@@ -24,7 +24,7 @@ endmodule
 
 module knight_moves(
     input coord_t sq_in,
-    output [63:0] mask_out
+    output logic [63:0] mask_out
 );
     logic [143:0] full_mask;
 
@@ -37,15 +37,15 @@ module knight_moves(
 
     generate
         for (genvar rnk = 0; rnk < 8; rnk = rnk + 1) begin
-            assign mask_out[rnk * 8 + 7:rnk * 8] = full_mask[rnk * 12 + 34:rnk * 12 + 27];
+            assign mask_out[rnk * 8 + 7:rnk * 8] = full_mask[rnk * 12 + 33:rnk * 12 + 26];
         end
     endgenerate
 endmodule
 
 module rook_moves(
     input coord_t sq_in,
-    input [63:0] occ_in,
-    output [63:0] mask_out
+    input wire [63:0] occ_in,
+    output logic [63:0] mask_out
 );
     function [7:0] rev8(logic [7:0] data);
         logic [7:0] out;
@@ -110,8 +110,8 @@ endmodule
 
 module bishop_moves(
     input coord_t sq_in,
-    input [63:0] occ_in,
-    output [63:0] mask_out
+    input wire [63:0] occ_in,
+    output logic [63:0] mask_out
 );
     // note: diag/antidiag definitions swapped from software model (as sw model definitions were unconventional)
 
@@ -220,7 +220,7 @@ module move_generator(
         occupied = 0;
         for (integer i = 0; i < `NB_PIECES; i = i + 1) begin
             // iVerilog hack
-            logic [63:0] pieces;
+            logic [4:0][63:0] pieces;
             pieces = board.pieces;
 
             occupied = occupied | pieces[i];
@@ -252,18 +252,25 @@ module move_generator(
     assign king_pl_dst_cur = valid_in ? king_all_dst & ~allies : king_pl_dst;
 
     always_comb begin
+        logic [7:0] king_rank_occ;
+
+        king_move = 'x;
+        king_castle_state_next = king_castle_state_cur;
+
+        king_rank_occ = is_black ? occupied[63:56] : occupied[7:0];
+
         if (king_pl_dst_cur != 0) begin
             king_move_valid = 1;
             king_move.src = king_sq;
             king_move.dst = ctz64(king_pl_dst_cur);
             king_move.special = SPECIAL_NONE;
-        end else if (king_castle_state_cur == 2'b00 && king_castle[0]) begin
+        end else if (king_castle_state_cur == 2'b00 && king_castle[0] && king_rank_occ[6:5] == 2'b0) begin
             king_move_valid = 1;
             king_move.src = king_sq;
             king_move.dst = (king_sq & 6'h38) | (6'h06);
             king_move.special = SPECIAL_CASTLE;
             king_castle_state_next = 2'b1;
-        end else if (king_castle_state_cur < 2'b10 && king_castle[1]) begin
+        end else if (king_castle_state_cur < 2'b10 && king_castle[1] && king_rank_occ[3:1] == 3'b0) begin
             king_move_valid = 1;
             king_move.src = king_sq;
             king_move.dst = (king_sq & 6'h38) | (6'h02);
@@ -293,6 +300,8 @@ module move_generator(
     assign knight_pl_dst_cur = (valid_in | knight_new) ? knight_all_dst & ~allies : knight_pl_dst;
 
     always_comb begin
+        knight_move = 'x;
+
         if (knight_avail_cur != 0 && knight_pl_dst_cur != 0) begin
             logic [5:0] knight_dst;
             knight_dst = ctz64(knight_pl_dst_cur);
@@ -327,6 +336,8 @@ module move_generator(
     assign bishop_pl_dst_cur = (valid_in | bishop_new) ? bishop_all_dst & ~allies : bishop_pl_dst;
 
     always_comb begin
+        bishop_move = 'x;
+
         if (bishop_avail_cur != 0 && bishop_pl_dst_cur != 0) begin
             logic [5:0] bishop_dst;
             bishop_dst = ctz64(bishop_pl_dst_cur);
@@ -361,6 +372,8 @@ module move_generator(
     assign rook_pl_dst_cur = (valid_in | rook_new) ? rook_all_dst & ~allies : rook_pl_dst;
 
     always_comb begin
+        rook_move = 'x;
+
         if (rook_avail_cur != 0 && rook_pl_dst_cur != 0) begin
             logic [5:0] rook_dst;
             rook_dst = ctz64(rook_pl_dst_cur);
@@ -390,7 +403,7 @@ module move_generator(
     logic pawn_go_next;
     logic pawn_new;
 
-    assign pawn_avail_cur = valid_in ? board.pieces[PAWN] : pawn_avail;
+    assign pawn_avail_cur = valid_in ? board.pieces[PAWN] & allies : pawn_avail;
     assign pawn_gen = ctz64(pawn_avail_cur);
 
     assign pawn_move_state_cur = (valid_in | pawn_new) ? 0 : pawn_move_state;
@@ -412,6 +425,9 @@ module move_generator(
     endfunction
 
     always_comb begin
+        pawn_move = 'x;
+        pawn_move_state_next = pawn_move_state_cur;
+
         if (pawn_avail_cur != 0) begin
             logic [63:0] local_occ;
             logic [63:0] local_opp;
@@ -445,7 +461,7 @@ module move_generator(
                 pawn_move_valid = 1;
                 pawn_move.src = pawn_gen;
                 pawn_move.dst = pawn_dst;
-                pawn_move.special = is_promote_rank ? `SPECIAL_PROMOTE + pawn_move_state_cur[2:0] : SPECIAL_NONE;
+                pawn_move.special = is_promote_rank ? move_special_t'(`SPECIAL_PROMOTE + pawn_move_state_cur[2:0]) : SPECIAL_NONE;
                 pawn_move_state_next = is_promote_rank ? pawn_move_state_cur + 4'b1 : 4'b1101;
                 pawn_go_next = ~has_fw2 & ~has_lcap & ~has_rcap & (~is_promote_rank || pawn_move_state_cur == 4'b0011);
             end else if (pawn_move_state_cur == 4'b1101 && has_fw2) begin
@@ -465,7 +481,7 @@ module move_generator(
                 pawn_move_valid = 1;
                 pawn_move.src = pawn_gen;
                 pawn_move.dst = pawn_dst;
-                pawn_move.special = is_promote_rank ? `SPECIAL_PROMOTE + pawn_move_state_cur[2:0] : SPECIAL_NONE;
+                pawn_move.special = is_promote_rank ? move_special_t'(`SPECIAL_PROMOTE + pawn_move_state_cur[2:0]) : SPECIAL_NONE;
                 pawn_move_state_next = is_promote_rank ? pawn_move_state_cur + 4'b1 : 4'b1000;
                 pawn_go_next = ~has_rcap & (~is_promote_rank || pawn_move_state_cur == 4'b0111);
             end else if (pawn_move_state_cur <= 4'b1011 && has_rcap) begin
@@ -475,7 +491,7 @@ module move_generator(
                 pawn_move_valid = 1;
                 pawn_move.src = pawn_gen;
                 pawn_move.dst = pawn_dst;
-                pawn_move.special = is_promote_rank ? `SPECIAL_PROMOTE + pawn_move_state_cur[2:0] : SPECIAL_NONE;
+                pawn_move.special = is_promote_rank ? move_special_t'(`SPECIAL_PROMOTE + pawn_move_state_cur[2:0]) : SPECIAL_NONE;
                 pawn_move_state_next = is_promote_rank ? pawn_move_state_cur + 4'b1 : 4'b1100;
                 pawn_go_next = ~is_promote_rank || pawn_move_state_cur == 4'b1011;
             end else begin
@@ -497,6 +513,16 @@ module move_generator(
         pawn_avail_cur != 0
     );
 
+    logic skip_knight;
+    logic skip_bishop;
+    logic skip_rook;
+    logic skip_pawn;
+
+    assign skip_knight = king_move_valid;
+    assign skip_bishop = skip_knight | knight_move_valid;
+    assign skip_rook = skip_bishop | bishop_move_valid;
+    assign skip_pawn = skip_rook | rook_move_valid;
+
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
             king_pl_dst <= 0;
@@ -513,6 +539,58 @@ module move_generator(
                 bishop_avail <= bishop_avail_cur;
                 rook_avail <= rook_avail_cur;
                 pawn_avail <= pawn_avail_cur;
+
+                if (!king_move_valid) begin
+                    king_castle_state <= king_castle_state_cur;
+                end
+
+                if (skip_knight || !knight_move_valid) begin
+                    knight_pl_dst <= knight_pl_dst_cur;
+                end
+                
+                if (skip_bishop || !bishop_move_valid) begin
+                    bishop_pl_dst <= bishop_pl_dst_cur;
+                end
+
+                if (skip_rook || !rook_move_valid) begin
+                    rook_pl_dst <= rook_pl_dst_cur;
+                end
+
+                if (skip_pawn || !pawn_move_valid) begin
+                    pawn_move_state <= pawn_move_state_cur;
+                end
+            end
+
+            if (!knight_move_valid || !skip_knight) begin
+                knight_new <= knight_go_next;
+
+                if (knight_go_next) begin
+                    knight_avail <= knight_avail_cur & (knight_avail_cur - 64'b1);
+                end
+            end
+
+            if (!bishop_move_valid || !skip_bishop) begin
+                bishop_new <= bishop_go_next;
+
+                if (bishop_go_next) begin
+                    bishop_avail <= bishop_avail_cur & (bishop_avail_cur - 64'b1);
+                end
+            end
+
+            if (!rook_move_valid || !skip_rook) begin
+                rook_new <= rook_go_next;
+
+                if (rook_go_next) begin
+                    rook_avail <= rook_avail_cur & (rook_avail_cur - 64'b1);
+                end
+            end
+
+            if (!pawn_move_valid || !skip_pawn) begin
+                pawn_new <= pawn_go_next;
+
+                if (pawn_go_next) begin
+                    pawn_avail <= pawn_avail_cur & (pawn_avail_cur - 64'b1);
+                end
             end
 
             if (king_move_valid) begin
@@ -526,41 +604,21 @@ module move_generator(
                 valid_out <= 1'b1;
 
                 knight_pl_dst <= knight_pl_dst_cur & (knight_pl_dst_cur - 64'b1);
-                knight_new <= knight_go_next;
-
-                if (knight_go_next) begin
-                    knight_avail <= knight_avail_cur & (knight_avail_cur - 64'b1);
-                end
             end else if (bishop_move_valid) begin
                 move_out <= bishop_move;
                 valid_out <= 1'b1;
 
                 bishop_pl_dst <= bishop_pl_dst_cur & (bishop_pl_dst_cur - 64'b1);
-                bishop_new <= bishop_go_next;
-
-                if (bishop_go_next) begin
-                    bishop_avail <= bishop_avail_cur & (bishop_avail_cur - 64'b1);
-                end
             end else if (rook_move_valid) begin
                 move_out <= rook_move;
                 valid_out <= 1'b1;
 
                 rook_pl_dst <= rook_pl_dst_cur & (rook_pl_dst_cur - 64'b1);
-                rook_new <= rook_go_next;
-
-                if (rook_go_next) begin
-                    rook_avail <= rook_avail_cur & (rook_avail_cur - 64'b1);
-                end
             end else if (pawn_move_valid) begin
                 move_out <= pawn_move;
                 valid_out <= 1'b1;
 
-                pawn_new <= pawn_go_next;
                 pawn_move_state <= pawn_move_state_next;
-
-                if (pawn_go_next) begin
-                    pawn_avail <= pawn_avail_cur & (pawn_avail_cur - 64'b1);
-                end
             end else begin
                 valid_out <= 1'b0;
             end

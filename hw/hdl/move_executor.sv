@@ -1,3 +1,5 @@
+`include "1_types.sv"
+
 `timescale 1ns / 1ps
 `default_nettype none
 
@@ -82,10 +84,10 @@ module move_executor
          ret_board.en_passant = 0;
          if(is_b) begin
             ret_board.kings[1] = move.dst;
-            ret_board.castle[3:2]=0;
+            ret_board.castle[1]=0;
          end else begin
             ret_board.kings[0] = move.dst;
-            ret_board.castle[1:0]=0;
+            ret_board.castle[0]=0;
          end
 
          if (move.special == SPECIAL_CASTLE || (move.special == SPECIAL_UNKNOWN && (dx > 1))) begin
@@ -105,9 +107,9 @@ module move_executor
       end
 
       if(is_b) begin
-         ret_board.castle[3:2] &= ~((is_piece[2] && (move.src.rnk==7)) ? {(move.src.fil == 0), (move.src.fil == 7)}: 0);
+         ret_board.castle[1] &= ~((is_piece[2] && (move.src.rnk==7)) ? {(move.src.fil == 0), (move.src.fil == 7)}: 0);
       end else begin
-         ret_board.castle[1:0] &= ~((is_piece[2] && (move.src.rnk==0)) ? {(move.src.fil == 0), (move.src.fil == 7)}: 0);
+         ret_board.castle[0] &= ~((is_piece[2] && (move.src.rnk==0)) ? {(move.src.fil == 0), (move.src.fil == 7)}: 0);
       end
       ret_board.en_passant = {(is_piece[4] && (abs_diff(move.dst, move.src) == 16)), move.dst.fil};
       case (move.special)

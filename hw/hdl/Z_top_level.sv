@@ -1,3 +1,4 @@
+`include "1_types.sv"
 `default_nettype none // prevents system from inferring an undeclared logic (good practice)
 
 module top_level
@@ -33,6 +34,10 @@ module top_level
     .rst_in(sys_rst),
     .tx_wire_out(uart_txd));
 
+    board_t board;
+    board_t cur_board;
+    logic board_valid;
+
     uci_handler uci
     (.clk_in(clk_100mhz), 
     .rst_in(sys_rst),
@@ -44,8 +49,25 @@ module top_level
     .best_move_in_valid(0),
     .char_out(transmitter.data_byte_in),
     .char_out_ready(~transmitter.busy_out),
-    .char_out_valid(transmitter.trigger_in)
+    .char_out_valid(transmitter.trigger_in),
+    .board_out(board),
+    .board_out_valid(board_valid)
     );
+
+    move_t move;
+    logic move_valid;
+
+    move_generator mg(
+      .clk_in(clk_100mhz),
+      .rst_in(sys_rst),
+      .board_in(cur_board),
+      .valid_in(board_valid),
+      .move_out(move),
+      .valid_out(move_valid),
+      .ready_out()
+    );
+
+    assign led[3] = move_valid ^ ^move;
 
 endmodule // top_level
 

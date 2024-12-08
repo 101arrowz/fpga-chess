@@ -1,4 +1,5 @@
-`define SPECIAL_PROMOTE SPECIAL_PROMOTE_KNIGHT
+`ifndef TYPES_SV
+`define TYPES_SV
 
 typedef enum logic[2:0] {
     SPECIAL_NONE = 3'b000,
@@ -16,7 +17,7 @@ typedef enum logic[2:0] {
     SPECIAL_PROMOTE_QUEEN = 3'b111
 } move_special_t;
 
-`define NB_PIECES 5
+`define SPECIAL_PROMOTE SPECIAL_PROMOTE_KNIGHT
 
 typedef enum logic[2:0] {
     KNIGHT = 3'b000,
@@ -26,6 +27,8 @@ typedef enum logic[2:0] {
     PAWN = 3'b100,
     KING = 3'b101
 } piece_t;
+
+`define NB_PIECES 5
 
 typedef struct packed  {
     logic[2:0] rnk;
@@ -48,3 +51,5 @@ typedef struct packed  {
     coord_t dst;
     move_special_t special;
 } move_t;
+
+`endif

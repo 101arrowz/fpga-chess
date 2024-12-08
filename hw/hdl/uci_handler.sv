@@ -1,3 +1,4 @@
+`include "1_types.sv"
 `timescale 1ns / 1ps
 `default_nettype none
 
