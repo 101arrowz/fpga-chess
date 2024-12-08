@@ -116,7 +116,7 @@ async def test_a(dut):
     print(''.join(read_string))"""
     moves=["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1g1", "f8e7", "d2d4", "e5d4", "f3d4", "e7c5", "c2c3"]
     for i in range(len(moves)):
-        print("Move ", i)
+        print("Move", i)
         await print_command("move " + moves[i])
         await wait(20)
 
