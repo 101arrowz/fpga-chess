@@ -42,14 +42,14 @@ async def test_a(dut):
         dut.info_in=0
         dut.info_in_valid=0
         await wait(1)
-    async def request_bestmove(src_col, src_row, dst_col, dst_row, special):
-        dut.best_move_in=special|(dst_col<<3)|(dst_row<<6)|(src_col<<9)|(src_row<<12)
+    async def request_bestmove(src_fil, src_rnk, dst_fil, dst_rnk, special):
+        dut.best_move_in=special|(dst_fil<<3)|(dst_rnk<<6)|(src_fil<<9)|(src_rnk<<12)
         dut.best_move_in_valid=1
         await wait(1)
-        dut.best_move_in.src_col=0
-        dut.best_move_in.src_row=0
-        dut.best_move_in.dst_col=0
-        dut.best_move_in.dst_row=0
+        dut.best_move_in.src_fil=0
+        dut.best_move_in.src_rnk=0
+        dut.best_move_in.dst_fil=0
+        dut.best_move_in.dst_rnk=0
         dut.best_move_in_valid=0
         dut.best_move_in.special=0
         await wait(1)

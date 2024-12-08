@@ -162,16 +162,16 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                 POSITION_MOVES: begin
                     if((charbuff_new[0]==" ")||(charbuff_new[0]==new_line)) begin
                         if(charbuff_new[5]==0) begin
-                            cur_move.src.col = charbuff_new[4]-"a";
-                            cur_move.src.row = charbuff_new[3]-"1";
-                            cur_move.dst.col = charbuff_new[2]-"a"; 
-                            cur_move.dst.row = charbuff_new[1]-"1";
+                            cur_move.src.fil = charbuff_new[4]-"a";
+                            cur_move.src.rnk = charbuff_new[3]-"1";
+                            cur_move.dst.fil = charbuff_new[2]-"a"; 
+                            cur_move.dst.rnk = charbuff_new[1]-"1";
                             cur_move.special=SPECIAL_NONE;
                         end else if(charbuff_new[6]==0) begin
-                            cur_move.src.col = charbuff_new[5]-"a";
-                            cur_move.src.row = charbuff_new[4]-"1";
-                            cur_move.dst.col = charbuff_new[3]-"a"; 
-                            cur_move.dst.row = charbuff_new[2]-"1";
+                            cur_move.src.fil = charbuff_new[5]-"a";
+                            cur_move.src.rnk = charbuff_new[4]-"1";
+                            cur_move.dst.fil = charbuff_new[3]-"a"; 
+                            cur_move.dst.rnk = charbuff_new[2]-"1";
                             case (charbuff_new[1])
                                 "n": cur_move.special=SPECIAL_PROMOTE_KNIGHT;
                                 "b": cur_move.special=SPECIAL_PROMOTE_BISHOP;
@@ -181,7 +181,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                             endcase
                         end
                         if((charbuff_new[5]==0)||(charbuff_new[6]==0)) begin
-                            //$display("(%d, %d)->(%d, %d), %d", cur_move.src.col, cur_move.src.row, cur_move.dst.col, cur_move.dst.row, cur_move.special);
+                            //$display("(%d, %d)->(%d, %d), %d", cur_move.src.fil, cur_move.src.rnk, cur_move.dst.fil, cur_move.dst.rnk, cur_move.special);
                             charbuff<=0;
                             exec_valid_in<=1;
                             exec_move_in<=cur_move;
@@ -217,7 +217,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                 end
                 if(best_move_in_valid&&best_move_in_ready) begin
                     current_output_state<=BEST_MOVE;
-                    //$display("Best move: (%d, %d)->(%d, %d), %d", best_move_in.src.col, best_move_in.src.row, best_move_in.dst.col, best_move_in.dst.row, best_move_in.special);
+                    //$display("Best move: (%d, %d)->(%d, %d), %d", best_move_in.src.fil, best_move_in.src.rnk, best_move_in.dst.fil, best_move_in.dst.rnk, best_move_in.special);
                     case (best_move_in.special)
                         SPECIAL_PROMOTE_KNIGHT: best_move_append="n";
                         SPECIAL_PROMOTE_BISHOP: best_move_append="b";
@@ -225,7 +225,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                         SPECIAL_PROMOTE_QUEEN: best_move_append="q";
                         default: best_move_append=0;
                     endcase
-                    best_move_buff<={best_move_append, ("1"+best_move_in.dst.row[2:0]), ("a"+best_move_in.dst.col[2:0]), ("1"+best_move_in.src.row[2:0]), ("a"+best_move_in.src.col[2:0]), " evomtseb"};
+                    best_move_buff<={best_move_append, ("1"+best_move_in.dst.rnk[2:0]), ("a"+best_move_in.dst.fil[2:0]), ("1"+best_move_in.src.rnk[2:0]), ("a"+best_move_in.src.fil[2:0]), " evomtseb"};
                     exec_valid_in<=1;
                     exec_move_in<=best_move_in;
                 end
