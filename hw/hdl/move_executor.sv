@@ -51,15 +51,15 @@ module move_executor
       src_mask=coord_to_mask(move.src);
       move_mask=coord_to_mask(move.dst);
       for(i=0; i<NB_PIECES; i=i+1) begin
-         logic[63:0] pieces;//doing this because of iVerilog
+         logic[4:0][63:0] pieces;//doing this because of iVerilog
          pieces = board.pieces;
          is_piece[i]= (pieces[i]&src_mask)!=0;
       end
       ret_board.pieces_w = is_b ? (board.pieces_w & ~move_mask) : (board.pieces_w | move_mask);
       //
       for(i=0; i<NB_PIECES; i=i+1) begin
-         logic[63:0] pieces;//doing this because of iVerilog
-         logic[63:0] pieces2;
+         logic[4:0][63:0] pieces;//doing this because of iVerilog
+         logic[4:0][63:0] pieces2;
          pieces = board.pieces;
          pieces2 = ret_board.pieces;
          captured_piece[i]= (pieces[i]&move_mask)!=0;
@@ -121,8 +121,8 @@ module move_executor
          logic [63:0] en_passant_mask;
          en_passant_mask=coord_to_mask(is_b ? (move.dst + 8) : (move.dst - 8));
          for(i=0; i<NB_PIECES; i++) begin
-            logic[63:0] pieces;//doing this because of iVerilog
-            logic[63:0] pieces2;
+            logic[4:0][63:0] pieces;//doing this because of iVerilog
+            logic[4:0][63:0] pieces2;
             pieces = board.pieces;
             pieces2 = ret_board.pieces;
             captured_piece[i]= (pieces[i]&en_passant_mask)!=0;
@@ -132,10 +132,10 @@ module move_executor
          captured=captured|(|captured_piece);
       end
       for(i=0; i<NB_PIECES; i++) begin
-         logic[63:0] pieces;//doing this because of iVerilog
+         logic[4:0][63:0] pieces;//doing this because of iVerilog
          pieces = ret_board.pieces;
          if(is_piece[i]) begin
-            pieces[i] = pieces[i] | move_mask;
+            pieces[i] = (pieces[i] & ~src_mask) | move_mask;
          end
          ret_board.pieces=pieces;
       end

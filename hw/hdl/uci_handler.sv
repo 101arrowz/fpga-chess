@@ -32,7 +32,22 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
     output logic char_out_valid
     );
     localparam new_line = 8'b0000_1010;
-    board_t start_board;
+    localparam board_t start_board = {
+        //Pieces
+        64'h00ff00000000ff00, //Pawn
+        64'h0800000000000008, //Queen
+        64'h8100000000000081, //Rook
+        64'h2400000000000024, //Bishop
+        64'h4200000000000042, //Knight
+
+        64'h000000000000ffff, //pieces_w
+        12'h0f04, //kings
+        2'h0, //checkmate
+        4'h0, //en_passant
+        4'hf, //castle
+        15'h0000, //ply
+        7'h00 //ply50
+        };
     uci_state current_state = READY;
     uci_output_state current_output_state = READY_OUT;
     logic in_debug_reg = 0;
