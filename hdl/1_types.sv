@@ -46,10 +46,12 @@ typedef struct packed {
     logic[6:0] ply50;
 } board_t;
 
-typedef struct packed  {
+typedef struct packed {
     coord_t src;
     coord_t dst;
     move_special_t special;
 } move_t;
+
+typedef logic [15:0] eval_t;
 
 `endif

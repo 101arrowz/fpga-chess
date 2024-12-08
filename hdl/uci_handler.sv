@@ -14,7 +14,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
     input wire char_in_valid,
     output logic   char_in_ready,
 
-    input wire[7:0][(INFO_LEN-1):0] info_in,
+    input wire[(INFO_LEN-1):0][7:0] info_in,
     input wire info_in_valid,
     output logic info_in_ready,
     
