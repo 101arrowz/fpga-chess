@@ -51,6 +51,7 @@ def sorter_runner():
     runner = get_runner(sim)
     runner.build(
         sources=sources,
+        includes=[proj_path / "hdl"],
         hdl_toplevel="stream_sorter",
         always=True,
         build_args=build_test_args,

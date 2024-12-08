@@ -66,8 +66,8 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
         char_in_ready=1;
     end
     always_ff@(posedge clk_in) begin
-        automatic move_t cur_move;
-        automatic logic[7:0] best_move_append=0;
+        move_t cur_move;
+        logic[7:0] best_move_append=0;
 
         exec_valid_in<=0;
         char_out_valid<=0;
@@ -211,17 +211,14 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                         SPECIAL_PROMOTE_QUEEN: best_move_append="q";
                         default: best_move_append=0;
                     endcase
-                    best_move_buff<={best_move_append, ("1"+best_move_in.dst.rnk), ("a"+best_move_in.dst.fil), ("1"+best_move_in.src.rnk), ("a"+best_move_in.src.fil), " evomtseb"};
+                    best_move_buff<={best_move_append, 8'("1"+best_move_in.dst.rnk), 8'("a"+best_move_in.dst.fil), 8'("1"+best_move_in.src.rnk), 8'("a"+best_move_in.src.fil), " evomtseb"};
                     exec_valid_in<=1;
                     exec_move_in<=best_move_in;
                 end
                 
             end
             INFO: begin
-                char_out<=info_in_buff[0];
-                if(info_in_buff[0]==0) begin
-                    char_out<=new_line;
-                end
+                char_out_valid<=1;
                 if(char_out_ready&&char_out_valid) begin
                     integer i;
                     info_in_buff[INFO_LEN+4]<=0;
@@ -231,27 +228,30 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                     if(info_in_buff[0]==0) begin
                         current_output_state<=READY_OUT;
                         info_in_buff<=0;
+                        char_out_valid <= 0;
                     end
+                    char_out<=info_in_buff[1]==0 ? new_line : info_in_buff[1];
+                end else begin
+                    char_out<=info_in_buff[0]==0 ? new_line : info_in_buff[0];
                 end
-                char_out_valid<=1;
             end
             BEST_MOVE: begin
-                char_out<=best_move_buff[0];
-                if(best_move_buff[0]==0) begin
-                    char_out<=new_line;
-                end
+                char_out_valid<=1;
                 if(char_out_ready&&char_out_valid) begin
                     integer i;
                     if(best_move_buff[0]==0) begin
                         current_output_state<=READY_OUT;
                         best_move_buff<=0;
+                        char_out_valid <= 0;
                     end
                     best_move_buff[13]<=0;
                     for(i=0; i < 13; i++) begin
                         best_move_buff[i]<=best_move_buff[i+1];
                     end
+                    char_out<=best_move_buff[1]==0 ? new_line : best_move_buff[1];
+                end else begin
+                    char_out<=best_move_buff[0]==0 ? new_line : best_move_buff[0];
                 end
-                char_out_valid<=1;
             end
         endcase
 
