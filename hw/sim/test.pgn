@@ -1,9 +1,28 @@
-[Event "Olympiad"]
-[Site "Munich"]
-[Date "1930.??.??"]
-[Round "?"]
-[White "Sultan Khan"]
-[Black "Tartakower"]
+[Event "URS-ch sf"]
+[Site "Tbilisi URS"]
+[Date "1956.12.02"]
+[EventDate "?"]
+[Round "10"]
 [Result "1-0"]
+[White "Vladlen Yakovlevich Zurakhov"]
+[Black "Alexander Koblents"]
+[ECO "C11"]
+[WhiteElo "?"]
+[BlackElo "?"]
+[PlyCount "159"]
 
-1. d4 d6 2. c4 e5 3. Nf3 Nd7 4. Nc3 Ngf6 5. e4 Be7 6. Be2 O-O 7. O-O c6 8. h3 Re8 9. Be3 Bf8 10. d5 cxd5 11. cxd5 a6 12. Nd2 b5 13. a4 b4 14. Na2 a5 15. Nc1 Ba6 16. Bxa6 Rxa6 17. Ncb3 Nb6 18. Rc1 Qd7 19. Bxb6 Rxb6 20. Nxa5 Ra6 21. Nc6 Rxa4 22. Nc4 Ra6 23. Qd3 Raa8 24. Nb6 Qb7 25. Nxa8 Rxa8 26. Qc4 b3 27. Ra1 Rxa1 28. Rxa1 g6 29. Ra7 Qb6 30. Ra8 Kg7 31. Rb8 Qc7 32. Rxb3 Nh5 33. g3 Qd7 34. Kg2 f5 35. Rf3 fxe4 36. Qxe4 Nf6 37. Qc4 Be7 38. b4 e4 39. Rb3 Qf5 40. b5 Nxd5 41. Nxe7 Nxe7 42. b6 d5 43. Qc5 Qd7 44. b7 Nc6 45. Rb6 Nb8 46. Rd6 Qf7 47. Rxd5 Qxb7 48. Qd4+ Kh6 49. Qxe4 Nc6 50. Qe3+ Kg7 51. h4 Qf7 52. h5 gxh5 53. Rg5+ Kh8 54. Qc3+ Ne5 55. Rxe5 Kg7 56. Re7+ Kg6 57. Qc6+ Qf6 58. Re6 Qxe6 59. Qxe6+ Kg5 60. f4#
+1.e4 e6 2.d4 d5 3.Nc3 Nf6 4.Bg5 dxe4 5.Nxe4 Be7 6.Bxf6 gxf6
+7.Nf3 b6 8. Bc4 Bb7 9.Qe2 c6 10.O-O Nd7 11.a4 f5 12.Ng3 Kf8
+13.Bxe6 fxe6 14.Qxe6 Nf6 15.Nxf5 Bc8 16.Qe5 Bxf5 17.Qxf5 Qd5
+18.Qf4 Rg8 19.Rae1 Rg4 20.Qh6+ Kg8 21.Rxe7 Qxf3 22.g3 Rg6
+23.Qh3 Qg4 24.Qxg4 Rxg4 25.c3 Re4 26.Rxe4 Nxe4 27. Re1 Re8
+28.f3 Nd6 29.Rxe8+ Nxe8 30.Kf2 Nd6 31.b3 b5 32.Ke3 bxa4
+33.bxa4 Nc4+ 34.Ke4 Kf7 35.d5 c5 36.f4 a5 37.f5 Nb6 38.d6 Ke8
+39.f6 Kf7 40.Ke5 Nd7+ 41.Kd5 Kxf6 42.g4 c4 43.Kc6 Ke6 44.g5
+Nf8 45.h4 Nd7 46.h5 Ne5+ 47. Kc7 Kf5 48.Kb6 Ke6 49.Kxa5 Kxd6
+50.Kb6 Nd7+ 51.Kb5 Kc7 52.Kxc4 Ne5+ 53. Kd5 Nf3 54.g6 hxg6
+55.hxg6 Nh4 56.g7 Nf5 57.g8=N Kb6 58.Kc4 Ne3+ 59.Kb3 Nd5 60.c4
+Nc7 61.Nf6 Ne6 62.Ne4 Nc7 63.Nf2 Ne6 64.Nd3 Nd4+ 65.Kc3 Ne2+
+66.Kb4 Nd4 67.c5+ Ka6 68.Kc4 Nf5 69.Kd5 Kb7 70.Nb4 Ne3+ 71.Kd4
+Nf5+ 72. Kc4 Ne3+ 73.Kb5 Kc7 74.a5 Nf5 75.Nd5+ Kb7 76.c6+ Ka7
+77.c7 Kb7 78.a6+ Ka7 79.c8=N+ Kb8 80.Kb6 1-0

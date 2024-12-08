@@ -38,6 +38,7 @@ module move_executor
    always_ff@(posedge clk_in) begin
       logic[(NB_PIECES-1):0] captured_piece;
       logic[(NB_PIECES-1):0] is_piece;
+      logic[(NB_PIECES-1):0] is_piece_dst;
       logic captured;
       logic[1:0] king_captured;
       logic [63:0] move_mask;
@@ -55,6 +56,7 @@ module move_executor
          pieces = board.pieces;
          is_piece[i]= (pieces[i]&src_mask)!=0;
       end
+      is_piece_dst=is_piece;
       ret_board.pieces_w = is_b ? (board.pieces_w & ~move_mask) : (board.pieces_w | move_mask);
       //
       for(i=0; i<NB_PIECES; i=i+1) begin
@@ -111,10 +113,10 @@ module move_executor
       end
       ret_board.en_passant = {(is_piece[4] && (abs_diff(move.dst, move.src) == 16)), move.dst.col};
       case (move.special)
-         SPECIAL_PROMOTE_KNIGHT: is_piece=4'b0001;
-         SPECIAL_PROMOTE_BISHOP: is_piece=4'b0010;
-         SPECIAL_PROMOTE_ROOK: is_piece=4'b0100;
-         SPECIAL_PROMOTE_QUEEN: is_piece=4'b1000;
+         SPECIAL_PROMOTE_KNIGHT: is_piece_dst=4'b0001;
+         SPECIAL_PROMOTE_BISHOP: is_piece_dst=4'b0010;
+         SPECIAL_PROMOTE_ROOK: is_piece_dst=4'b0100;
+         SPECIAL_PROMOTE_QUEEN: is_piece_dst=4'b1000;
       endcase
       if (move.special == SPECIAL_EN_PASSANT || ((move.special == SPECIAL_UNKNOWN) && is_piece[4] && (move.dst.col != move.src.col) && !captured)) begin
          logic [63:0] en_passant_mask;
@@ -134,7 +136,10 @@ module move_executor
          logic[4:0][63:0] pieces;//doing this because of iVerilog
          pieces = ret_board.pieces;
          if(is_piece[i]) begin
-            pieces[i] = (pieces[i] & ~src_mask) | move_mask;
+            pieces[i] = pieces[i] & ~src_mask;
+         end
+         if(is_piece_dst[i]) begin
+            pieces[i] = pieces[i] | move_mask;
          end
          ret_board.pieces=pieces;
       end
