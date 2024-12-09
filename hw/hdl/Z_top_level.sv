@@ -35,8 +35,11 @@ module top_level
     .tx_wire_out(uart_txd));
 
     board_t board;
-    board_t cur_board;
     logic board_valid;
+    logic go;
+
+    move_t move;
+    logic move_valid;
 
     uci_handler uci
     (.clk_in(clk_100mhz), 
@@ -45,30 +48,30 @@ module top_level
     .char_in_valid(reciever.new_data_out),
     .info_in(0),
     .info_in_valid(0),
-    .best_move_in(0),
-    .best_move_in_valid(0),
+    .best_move_in(move),
+    .best_move_in_valid(move_valid),
     .char_out(transmitter.data_byte_in),
     .char_out_ready(~transmitter.busy_out),
     .char_out_valid(transmitter.trigger_in),
     .board_out(board),
-    .board_out_valid(board_valid)
+    .board_out_valid(board_valid),
+    .go(go)
     );
 
-    move_t move;
-    logic move_valid;
-
-    move_generator mg(
+    engine_coordinator ec(
       .clk_in(clk_100mhz),
       .rst_in(sys_rst),
-      .board_in(cur_board),
-      .valid_in(board_valid),
-      .move_out(move),
+      .board_in(board),
+      .board_valid_in(board_valid),
+      .go_in(go),
+      .time_in(1),
+      .depth_in(7),
+      .ready_out(), // TODO
+      .bestmove_out(move),
       .valid_out(move_valid),
-      .ready_out()
+      .info_buf(),
+      .info_valid_out()
     );
-
-    assign led[3] = move_valid ^ ^move;
-
 endmodule // top_level
 
 `default_nettype wire

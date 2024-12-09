@@ -2,7 +2,7 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-typedef enum {READY, NEXT, GENERATING, WRITEBACK, FINISH} ec_depth_state;
+typedef enum {EC_READY, EC_NEXT, EC_GENERATING, EC_WRITEBACK, EC_FINISH} ec_depth_state;
 
 module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)(
     input wire    clk_in,
@@ -48,10 +48,10 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
 
     stream_sorter#(.MAX_LEN(MAX_MOVES), .KEY_BITS($bits(eval_t)), .VALUE_BITS($bits(move_t))) root_best(
         .clk_in(clk_in),
-        .rst_in(rst_in || (cur_state == FINISH && cur_depth == 0)),
+        .rst_in(rst_in || (cur_state == EC_FINISH && cur_depth == 0)),
         .value_in(cur_move0),
         .key_in(move0_score),
-        .valid_in(cur_depth == 1 && cur_state == FINISH),
+        .valid_in(cur_depth == 1 && cur_state == EC_FINISH),
         .dequeue_in(),
         .array_out(move0_values),
         .keys_out(move0_keys),
@@ -179,7 +179,6 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
     move_generator movegen(
         .clk_in(clk_in),
         .rst_in(rst_in),
-        .ready_out(mvgen_ready),
         .board_in(cur_board),
         .valid_in(start_movegen),
         .move_out(movegen_pipe[1]),
@@ -287,7 +286,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
     move_t np_move;
     logic np_valid;
     
-    assign np_move = cur_state == GENERATING && last_move_sorted ? top_sort_move : prefetch_move;
+    assign np_move = cur_state == EC_GENERATING && last_move_sorted ? top_sort_move : prefetch_move;
     assign np_valid = 1; // TODO
 
     move_executor next_pos_gen(
@@ -334,17 +333,17 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
         if (rst_in) begin
             cur_depth <= 0;
             start_movegen <= 0;
-            cur_state <= READY;
+            cur_state <= EC_READY;
             valid_out <= 0;
             info_valid_out <= 0;
             cur_sorter <= 0;
-        end else if (cur_state != READY && time_in == 0) begin
+        end else if (cur_state != EC_READY && time_in == 0) begin
             bestmove_out <= cur_best;
             valid_out <= 1;
-            cur_state <= READY;
+            cur_state <= EC_READY;
         end else begin
             case (cur_state)
-                READY: begin
+                EC_READY: begin
                     valid_out <= 0;
                     if (board_valid_in) begin
                         pos_stack[0].board <= board_in;
@@ -358,12 +357,12 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
                         pos_stack[0].score <= -16'sd32760;
                         pos_stack[0].beta <= 16'sd32760;
                         pos_stack[0].move_idx <= 1;
-                        cur_state <= NEXT;
+                        cur_state <= EC_NEXT;
                     end else begin
                         ready_out <= 1;
                     end
                 end
-                NEXT: begin
+                EC_NEXT: begin
                     if (cur_depth >= target_depth) begin
                         if (pos_eval_ready) begin
                             pos_stack[cur_depth].score <= stand_pat;
@@ -373,40 +372,40 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
                             end
 
                             if (stand_pat > pos_stack[cur_depth].beta) begin
-                                cur_state <= FINISH;
+                                cur_state <= EC_FINISH;
                             end
 
                             if (movegen_ready && next_free_sorter != 0) begin
                                 // NOTE: should always be true on the first cycle but doesn't hurt to check
                                 start_movegen <= 1;
                                 cur_sorter <= next_free_sorter;
-                                cur_state <= GENERATING;
+                                cur_state <= EC_GENERATING;
                             end
                         end 
                     end else if (movegen_ready && next_free_sorter != 0) begin
                         // NOTE: should always be true on the first cycle but doesn't hurt to check
                         start_movegen <= 1;
                         cur_sorter <= next_free_sorter;
-                        cur_state <= GENERATING;
+                        cur_state <= EC_GENERATING;
                     end
                 end
-                GENERATING: begin
+                EC_GENERATING: begin
                     start_movegen <= 0;
                     if (last_move_sorted) begin
                         // getting next position from next_pos_gen already
-                        cur_state <= WRITEBACK;
+                        cur_state <= EC_WRITEBACK;
                         pos_stack[cur_depth].num_moves <= sort_len[cur_sorter - 1];
                         // note: due to the assumptions we make this strategy only works with 2 or fewer sorters
                         cur_sorter <= 0; // drain can begin *after* the next cycle (2 cycles from now)
                     end
                 end
-                WRITEBACK: begin
+                EC_WRITEBACK: begin
                     if (pos_stack[cur_depth].num_moves == 0) begin
                         // otherwise checkmate and default to -32760
                         if (!cur_check) begin
                             pos_stack[cur_depth].score <= 0;
                         end
-                        cur_state <= FINISH;
+                        cur_state <= EC_FINISH;
                     end else begin
                         cur_depth <= cur_depth + 1;
                         if (cur_depth == 0) begin
@@ -418,19 +417,19 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
                         pos_stack[cur_depth + 1].beta <= -pos_stack[cur_depth].alpha;
                         pos_stack[cur_depth + 1].board <= next_pos;
                         pos_stack[cur_depth + 1].move_idx <= 1;
-                        cur_state <= next_pos.ply50 >= 7'd100 || next_pos.checkmate[next_pos.ply[0]] ? FINISH : NEXT;
+                        cur_state <= next_pos.ply50 >= 7'd100 || next_pos.checkmate[next_pos.ply[0]] ? EC_FINISH : EC_NEXT;
                     end
                 end
-                FINISH: begin
+                EC_FINISH: begin
                     if (cur_depth == 0) begin
                         if (target_depth < depth_in) begin
                             // iterative deepening
                             target_depth <= target_depth + 1;
-                            cur_state <= NEXT;
+                            cur_state <= EC_NEXT;
                         end else begin
                             bestmove_out <= cur_best;
                             valid_out <= 1;
-                            cur_state <= READY;
+                            cur_state <= EC_READY;
                         end
                     end else begin
                         if (cur_depth == 1) begin
@@ -452,7 +451,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
                             pos_stack[cur_depth].beta <= -new_alpha;
                             pos_stack[cur_depth].move_idx <= 1;
 
-                            cur_state <= NEXT;
+                            cur_state <= EC_NEXT;
                         end
                     end
                 end

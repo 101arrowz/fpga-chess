@@ -33,7 +33,22 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
     output logic char_out_valid
     );
     localparam new_line = 8'b0000_1010;
-    board_t start_board;
+    localparam board_t start_board = {
+        //Pieces
+        64'h00ff00000000ff00, //Pawn
+        64'h0800000000000008, //Queen
+        64'h8100000000000081, //Rook
+        64'h2400000000000024, //Bishop
+        64'h4200000000000042, //Knight
+
+        64'h000000000000ffff, //pieces_w
+        12'h0f04, //kings
+        2'h0, //checkmate
+        4'h0, //en_passant
+        4'hf, //castle
+        15'h0000, //ply
+        7'h00 //ply50
+    };
     uci_state current_state = READY;
     uci_output_state current_output_state = READY_OUT;
     logic in_debug_reg = 0;
@@ -66,8 +81,8 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
         char_in_ready=1;
     end
     always_ff@(posedge clk_in) begin
-        move_t cur_move;
-        logic[7:0] best_move_append=0;
+        automatic move_t cur_move;
+        automatic logic[7:0] best_move_append=0;
 
         exec_valid_in<=0;
         char_out_valid<=0;
@@ -153,7 +168,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                             cur_move.src.rnk = charbuff_new[3]-"1";
                             cur_move.dst.fil = charbuff_new[2]-"a"; 
                             cur_move.dst.rnk = charbuff_new[1]-"1";
-                            cur_move.special=SPECIAL_NONE;
+                            cur_move.special=SPECIAL_UNKNOWN;
                         end else if(charbuff_new[6]==0) begin
                             cur_move.src.fil = charbuff_new[5]-"a";
                             cur_move.src.rnk = charbuff_new[4]-"1";
@@ -164,7 +179,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                                 "b": cur_move.special=SPECIAL_PROMOTE_BISHOP;
                                 "r": cur_move.special=SPECIAL_PROMOTE_ROOK;
                                 "q": cur_move.special=SPECIAL_PROMOTE_QUEEN;
-                                default: cur_move.special=SPECIAL_UNKNOWN;
+                                default: cur_move.special=SPECIAL_NONE;
                             endcase
                         end
                         if((charbuff_new[5]==0)||(charbuff_new[6]==0)) begin
