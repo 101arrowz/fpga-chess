@@ -241,8 +241,8 @@ module move_evaluator(
     input wire    clk_in,
     input wire    rst_in,
     input move_t  last_move_in,
-    input board_t old_board_in,
     input board_t board_in,
+    input wire    no_validate,
     input wire    valid_in,
     output move_t move_out,
     output eval_t eval_out,
@@ -292,7 +292,8 @@ module move_evaluator(
     assign valid_pipe[1] = valid_in;
     assign move_pipe[1] = last_move_in;
     assign checkmate_pipe[1] = board_in.checkmate;
-    assign is_black_pipe[1] = board_in;
+    // after executing a move, opposite color - account for that here
+    assign is_black_pipe[1] = ~board_in.ply[0];
 
     always_comb begin
         logic [63:0] black_bishop;
@@ -336,7 +337,7 @@ module move_evaluator(
         white_eval += bishop_pair_pipe[0][1] != bishop_pair_pipe[0][0] ? (bishop_pair_pipe[0][1] ? -16'sd80 : 16'sd80) : 16'sd0;
 
         eval_result = is_black_pipe[0] ? -white_eval : white_eval;
-        eval_result_valid = legal_pipe[0] & valid_pipe[0];
+        eval_result_valid = (no_validate | legal_pipe[0]) & valid_pipe[0];
     end
 
     assign eval_out = eval_result;
