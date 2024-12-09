@@ -6,7 +6,7 @@ import sys
 
 # set according to your system!
 # CHANGE ME
-SERIAL_PORTNAME = "COM4"
+SERIAL_PORTNAME = "/dev/cu.usbserial-210292AE394A1"
 BAUD = 115200
 ser = serial.Serial(SERIAL_PORTNAME,BAUD)
 ser.timeout=0.1
@@ -24,7 +24,7 @@ def read():
     return res
 
 write("uci\n")
-print(read())
+print(read(), end='')
         
 
 if __name__ == "__main__":

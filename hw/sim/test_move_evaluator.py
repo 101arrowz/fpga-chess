@@ -31,7 +31,7 @@ async def test_a(dut):
         'white': 0x000000000000ffff
     }
 
-    # occupancies['queen'] |= 1 << 36
+    occupancies['queen'] |= 1 << 36
     # occupancies['white'] |= 1 << 36
 
     king_w = 0x04

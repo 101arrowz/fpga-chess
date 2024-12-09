@@ -4,35 +4,45 @@
 module top_level
   (
    input wire          clk_100mhz, //100 MHz onboard clock
+   //input wire clk_40mhz,
    input wire [15:0]   sw, //all 16 input slide switches
-   input wire [3:0]    btn, //all four momentary button switches
+   //input wire [3:0]    btn, //all four momentary button switches
+   input wire btnd,
+   input wire btnc,
    output logic [15:0] led, //16 green output LEDs (located right above switches)
-   output logic [2:0]  rgb0, //RGB channels of RGB LED0
-   output logic [2:0]  rgb1, //RGB channels of RGB LED1
-   output logic        spkl, spkr, // left and right channels of line out port
-   input wire          cipo, // SPI controller-in peripheral-out
-   output logic        copi, dclk, cs, // SPI controller output signals
-	 input wire 				 uart_rxd, // UART computer-FPGA
-	 output logic 			 uart_txd, // UART FPGA-computer
-       output logic [3:0] ss0_an,//anode control for upper four digits of seven-seg display
-  output logic [3:0] ss1_an,//anode control for lower four digits of seven-seg display
-  output logic [6:0] ss0_c, //cathode controls for the segments of upper four digits
-  output logic [6:0] ss1_c //cathode controls for the segments of lower four digits
+   //output logic [2:0]  rgb0, //RGB channels of RGB LED0
+   //output logic [2:0]  rgb1, //RGB channels of RGB LED1
+   //output logic        spkl, spkr, // left and right channels of line out port
+   //input wire          cipo, // SPI controller-in peripheral-out
+   //output logic        copi, dclk, cs, // SPI controller output signals
+	 input wire 				 uart_txd_in, // UART computer-FPGA
+	 output logic 			 uart_rxd_out // UART FPGA-computer
+  //output logic [3:0] ss0_an,//anode control for upper four digits of seven-seg display
+  //output logic [3:0] ss1_an,//anode control for lower four digits of seven-seg display
+  //output logic [6:0] ss0_c, //cathode controls for the segments of upper four digits
+  //output logic [6:0] ss1_c //cathode controls for the segments of lower four digits
    );
     //have btnd control system reset
     logic               sys_rst;
-    assign sys_rst = btn[0];
+    assign sys_rst = btnd;
 
-    assign rgb0 = 0; //set to 0.
-    assign rgb1 = 0; //set to 0.
+    //assign rgb0 = 0; //set to 0.
+    //assign rgb1 = 0; //set to 0.
 
-    uart_receive #(.BAUD_RATE(115200)) reciever (.clk_in(clk_100mhz),
+    wire clk_40mhz;
+
+    clk_wiz_0_clk_wiz clkw(
+      .clk_in1(clk_100mhz),
+      .clk_out1(clk_40mhz)
+    );
+
+    uart_receive #(.INPUT_CLOCK_FREQ(40_000_000), .BAUD_RATE(115200)) reciever (.clk_in(clk_40mhz),
     .rst_in(sys_rst),
-    .rx_wire_in(uart_rxd));
+    .rx_wire_in(uart_txd_in));
     
-    uart_transmit #(.BAUD_RATE(115200)) transmitter(.clk_in(clk_100mhz), 
+    uart_transmit #(.INPUT_CLOCK_FREQ(40_000_000), .BAUD_RATE(115200)) transmitter(.clk_in(clk_40mhz), 
     .rst_in(sys_rst),
-    .tx_wire_out(uart_txd));
+    .tx_wire_out(uart_rxd_out));
 
     board_t board;
     logic board_valid;
@@ -40,9 +50,11 @@ module top_level
 
     move_t move;
     logic move_valid;
+    logic ec_ready;
+    logic did_go;
 
     uci_handler uci
-    (.clk_in(clk_100mhz), 
+    (.clk_in(clk_40mhz), 
     .rst_in(sys_rst),
     .char_in(reciever.data_byte_out),
     .char_in_valid(reciever.new_data_out),
@@ -58,15 +70,26 @@ module top_level
     .go(go)
     );
 
+    always_ff @(posedge clk_40mhz) begin
+      if (sys_rst) begin
+        did_go <= 0;
+      end else begin
+        did_go <= did_go | go;
+      end
+    end
+
+    assign led[0] = btnc;
+    assign led[1] = ec_ready;
+
     engine_coordinator ec(
-      .clk_in(clk_100mhz),
+      .clk_in(clk_40mhz),
       .rst_in(sys_rst),
       .board_in(board),
       .board_valid_in(board_valid),
       .go_in(go),
       .time_in(1),
       .depth_in(7),
-      .ready_out(), // TODO
+      .ready_out(ec_ready), // TODO
       .bestmove_out(move),
       .valid_out(move_valid),
       .info_buf(),
