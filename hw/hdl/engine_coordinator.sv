@@ -279,6 +279,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
     );
 
     logic pos_eval_ready;
+    eval_t stand_pat;
     ec_depth_state old_state;
     synchronizer#(.COUNT(3), .WIDTH($bits(ec_depth_state))) pos_eval_ec_state_sync(
         .clk_in(clk_in),
@@ -287,6 +288,8 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
         .data_out(old_state)
     );
     assign pos_eval_ready = old_state == EC_NEXT && cur_state == EC_NEXT;
+    // because eval_result automatically flips the evaluation side
+    assign stand_pat = -eval_result;
 
     localparam MOVE_EVAL_SYNC = 1;
     synchronizer#(.COUNT(MOVE_EVAL_SYNC), .WIDTH($bits(eval_t))) mev_key_sync(
@@ -387,13 +390,14 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
                 EC_NEXT: begin
                     if (cur_depth >= target_depth) begin
                         if (pos_eval_ready) begin
-                            pos_stack[cur_depth].score <= eval_result;
+                            // now evaluating for us...flip sign
+                            pos_stack[cur_depth].score <= stand_pat;
 
-                            if (eval_result > pos_stack[cur_depth].alpha) begin
-                                pos_stack[cur_depth].alpha <= eval_result;
+                            if (stand_pat > pos_stack[cur_depth].alpha) begin
+                                pos_stack[cur_depth].alpha <= stand_pat;
                             end
 
-                            if (eval_result > pos_stack[cur_depth].beta) begin
+                            if (stand_pat > pos_stack[cur_depth].beta) begin
                                 cur_state <= EC_FINISH;
                             end
 

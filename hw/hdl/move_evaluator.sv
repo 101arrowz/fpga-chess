@@ -109,7 +109,121 @@ module pst(
     // sign extension
     assign sqdelta_sum = {{8{sqdelta[7]}}, sqdelta};
 
-    assign eval_out = $signed(piece_weights[ptype_in]);// + $signed(sqdelta_sum);
+    assign eval_out = $signed(piece_weights[ptype_in]) + $signed(sqdelta_sum);
+endmodule
+
+module pst_sq#(parameter [5:0] SQ = 0)(
+    input wire [2:0] ptype_in,
+    output logic signed [15:0] eval_out
+);
+    logic [7:0][15:0] piece_weights;
+    logic [7:0][63:0][7:0] square_deltas;
+    logic [7:0][7:0] my_sq_deltas;
+
+    logic [7:0] sqdelta;
+    logic [15:0] sqdelta_sum;
+
+    assign piece_weights[0] = 0;
+    assign piece_weights[KNIGHT + 1] = 16'sd300;
+    assign piece_weights[BISHOP + 1] = 16'sd340;
+    assign piece_weights[ROOK + 1] = 16'sd550;
+    assign piece_weights[QUEEN + 1] = 16'sd1000;
+    assign piece_weights[PAWN + 1] = 16'sd100;
+    assign piece_weights[KING + 1] = 16'sd15000;
+    assign piece_weights[KING + 2] = 16'sd15000;
+
+    assign square_deltas[0] = 512'b0;
+
+    assign square_deltas[KNIGHT + 1] = {
+        -8'sd50, -8'sd40, -8'sd30, -8'sd30, -8'sd30, -8'sd30, -8'sd40, -8'sd50,
+        -8'sd40, -8'sd20,  8'sd00,  8'sd05,  8'sd05,  8'sd00, -8'sd20, -8'sd40,
+        -8'sd30,  8'sd05,  8'sd10,  8'sd15,  8'sd15,  8'sd10,  8'sd05, -8'sd30,
+        -8'sd30,  8'sd00,  8'sd15,  8'sd20,  8'sd20,  8'sd15,  8'sd00, -8'sd30,
+        -8'sd30,  8'sd05,  8'sd15,  8'sd20,  8'sd20,  8'sd15,  8'sd05, -8'sd30,
+        -8'sd30,  8'sd00,  8'sd10,  8'sd15,  8'sd15,  8'sd10,  8'sd00, -8'sd30,
+        -8'sd40, -8'sd20,  8'sd00,  8'sd00,  8'sd00,  8'sd00, -8'sd20, -8'sd40,
+        -8'sd50, -8'sd40, -8'sd30, -8'sd30, -8'sd30, -8'sd30, -8'sd40, -8'sd50
+    };
+
+    assign square_deltas[BISHOP + 1] = {
+        -8'sd20, -8'sd10, -8'sd10, -8'sd10, -8'sd10, -8'sd10, -8'sd10, -8'sd20,
+        -8'sd10,  8'sd05,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd05, -8'sd10,
+        -8'sd10,  8'sd10,  8'sd10,  8'sd10,  8'sd10,  8'sd10,  8'sd10, -8'sd10,
+        -8'sd10,  8'sd00,  8'sd10,  8'sd10,  8'sd10,  8'sd10,  8'sd00, -8'sd10,
+        -8'sd10,  8'sd05,  8'sd05,  8'sd10,  8'sd10,  8'sd05,  8'sd05, -8'sd10,
+        -8'sd10,  8'sd00,  8'sd05,  8'sd10,  8'sd10,  8'sd05,  8'sd00, -8'sd10,
+        -8'sd10,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00, -8'sd10,
+        -8'sd20, -8'sd10, -8'sd10, -8'sd10, -8'sd10, -8'sd10, -8'sd10, -8'sd20
+    };
+
+    assign square_deltas[ROOK + 1] = {
+         8'sd00,  8'sd00,  8'sd00,  8'sd05,  8'sd05,  8'sd00,  8'sd00,  8'sd00,
+        -8'sd05,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00, -8'sd05,
+        -8'sd05,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00, -8'sd05,
+        -8'sd05,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00, -8'sd05,
+        -8'sd05,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00, -8'sd05,
+        -8'sd05,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00, -8'sd05,
+         8'sd05,  8'sd10,  8'sd10,  8'sd10,  8'sd10,  8'sd10,  8'sd10,  8'sd05,
+         8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00
+    };
+
+    assign square_deltas[QUEEN + 1] = {
+        -8'sd20, -8'sd10, -8'sd10, -8'sd05, -8'sd05, -8'sd10, -8'sd10, -8'sd20,
+        -8'sd10,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd05,  8'sd00, -8'sd10,
+        -8'sd10,  8'sd00,  8'sd05,  8'sd05,  8'sd05,  8'sd05,  8'sd05, -8'sd10,
+        -8'sd05,  8'sd00,  8'sd05,  8'sd05,  8'sd05,  8'sd05,  8'sd00,  8'sd00,
+        -8'sd05,  8'sd00,  8'sd05,  8'sd05,  8'sd05,  8'sd05,  8'sd00, -8'sd05,
+        -8'sd10,  8'sd00,  8'sd05,  8'sd05,  8'sd05,  8'sd05,  8'sd00, -8'sd10,
+        -8'sd10,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00, -8'sd10,
+        -8'sd20, -8'sd10, -8'sd10, -8'sd05, -8'sd05, -8'sd10, -8'sd10, -8'sd20
+    };
+
+    assign square_deltas[PAWN + 1] = {
+        8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,
+        8'sd50,  8'sd50,  8'sd50,  8'sd50,  8'sd50,  8'sd50,  8'sd50,  8'sd50,
+        8'sd10,  8'sd10,  8'sd20,  8'sd30,  8'sd30,  8'sd20,  8'sd10,  8'sd10,
+        8'sd05,  8'sd05,  8'sd10,  8'sd25,  8'sd25,  8'sd10,  8'sd05,  8'sd05,
+        8'sd00,  8'sd00,  8'sd00,  8'sd20,  8'sd20,  8'sd00,  8'sd00,  8'sd00,
+        8'sd05, -8'sd05, -8'sd10,  8'sd00,  8'sd00, -8'sd10, -8'sd05,  8'sd05,
+        8'sd05,  8'sd10,  8'sd10, -8'sd20, -8'sd20,  8'sd10,  8'sd10,  8'sd05,
+        8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd00
+    };
+
+    // king (normal)
+    assign square_deltas[KING + 1] = {
+         8'sd20,  8'sd30,  8'sd10,  8'sd00,  8'sd00,  8'sd10,  8'sd30,  8'sd20,
+         8'sd20,  8'sd20,  8'sd00,  8'sd00,  8'sd00,  8'sd00,  8'sd20,  8'sd20,
+        -8'sd10, -8'sd20, -8'sd20, -8'sd20, -8'sd20, -8'sd20, -8'sd20, -8'sd10,
+        -8'sd20, -8'sd30, -8'sd30, -8'sd40, -8'sd40, -8'sd30, -8'sd30, -8'sd20,
+        -8'sd30, -8'sd40, -8'sd40, -8'sd50, -8'sd50, -8'sd40, -8'sd40, -8'sd30,
+        -8'sd30, -8'sd40, -8'sd40, -8'sd50, -8'sd50, -8'sd40, -8'sd40, -8'sd30,
+        -8'sd30, -8'sd40, -8'sd40, -8'sd50, -8'sd50, -8'sd40, -8'sd40, -8'sd30,
+        -8'sd30, -8'sd40, -8'sd40, -8'sd50, -8'sd50, -8'sd40, -8'sd40, -8'sd30
+    };
+
+    // king (endgame)
+    assign square_deltas[KING + 2] = {
+        -8'sd50, -8'sd30, -8'sd30, -8'sd30, -8'sd30, -8'sd30, -8'sd30, -8'sd50,
+        -8'sd30, -8'sd30,  8'sd00,  8'sd00,  8'sd00,  8'sd00, -8'sd30, -8'sd30,
+        -8'sd30, -8'sd10,  8'sd20,  8'sd30,  8'sd30,  8'sd20, -8'sd10, -8'sd30,
+        -8'sd30, -8'sd10,  8'sd30,  8'sd40,  8'sd40,  8'sd30, -8'sd10, -8'sd30,
+        -8'sd30, -8'sd10,  8'sd30,  8'sd40,  8'sd40,  8'sd30, -8'sd10, -8'sd30,
+        -8'sd30, -8'sd10,  8'sd20,  8'sd30,  8'sd30,  8'sd20, -8'sd10, -8'sd30,
+        -8'sd30, -8'sd20, -8'sd10,  8'sd00,  8'sd00, -8'sd10, -8'sd20, -8'sd30,
+        -8'sd50, -8'sd40, -8'sd30, -8'sd20, -8'sd20, -8'sd30, -8'sd40, -8'sd50
+    };
+
+    generate
+        for (genvar i = 0; i < 8; i = i + 1) begin
+            assign my_sq_deltas[i] = square_deltas[i][SQ];
+        end
+    endgenerate
+
+    assign sqdelta = my_sq_deltas[ptype_in];
+    // sign extension
+    assign sqdelta_sum = {{8{sqdelta[7]}}, sqdelta};
+
+    assign eval_out = $signed(piece_weights[ptype_in]) + $signed(sqdelta_sum);
 endmodule
 
 module square_evaluator#(parameter [5:0] SQ = 0)(
@@ -119,11 +233,17 @@ module square_evaluator#(parameter [5:0] SQ = 0)(
 );
     logic [2:0] ptype;
     logic signed [15:0] ps_eval;
-
-    pst tab(
-        .sq_in(board_in.pieces_w[SQ] ? SQ : {~SQ[5:3], SQ[2:0]}),
+    logic signed [15:0] w_eval;
+    logic signed [15:0] b_eval;
+    
+    pst_sq#(.SQ(SQ)) pstw(
         .ptype_in(ptype),
-        .eval_out(ps_eval)
+        .eval_out(w_eval)
+    );
+
+    pst_sq#(.SQ({~SQ[5:3], SQ[2:0]})) pstb(
+        .ptype_in(ptype),
+        .eval_out(b_eval)
     );
 
     always_comb begin
@@ -137,8 +257,8 @@ module square_evaluator#(parameter [5:0] SQ = 0)(
         end
     end
 
-    assign abs_eval_out = ps_eval;
-    assign eval_out = board_in.pieces_w[SQ] ? ps_eval : -ps_eval;
+    assign abs_eval_out = board_in.pieces_w[SQ] ? w_eval : b_eval;
+    assign eval_out = board_in.pieces_w[SQ] ? w_eval : -b_eval;
 endmodule
 
 module check_finder(
@@ -249,10 +369,9 @@ module move_evaluator(
     output eval_t eval_out,
     output logic  valid_out
 );
-    assign eval_out = (board_in.ply[1] ^ board_in.ply[4]) + board_in.pieces[QUEEN][15:0];
-    assign valid_out = valid_in;
+    //assign eval_out = (board_in.ply[1] ^ board_in.ply[4]) + board_in.pieces[QUEEN][15:0];
+    //assign valid_out = valid_in;
 
-    /*
     logic [63:0][15:0] pst_eval;
     logic [63:0][15:0] pst_eval_abs;
 
@@ -401,7 +520,6 @@ module move_evaluator(
         kings_pipe[1] <= kings_pipe[2];
         is_black_pipe[1] <= is_black_pipe[2];
     end
-    */
 endmodule
 
 `default_nettype wire
