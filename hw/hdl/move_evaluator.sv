@@ -18,7 +18,8 @@ module pst(
     assign piece_weights[KNIGHT + 1] = 16'sd300;
     assign piece_weights[BISHOP + 1] = 16'sd340;
     assign piece_weights[ROOK + 1] = 16'sd550;
-    assign piece_weights[PAWN + 1] = 16'sd1000;
+    assign piece_weights[QUEEN + 1] = 16'sd1000;
+    assign piece_weights[PAWN + 1] = 16'sd100;
     assign piece_weights[KING + 1] = 16'sd15000;
     assign piece_weights[KING + 2] = 16'sd15000;
 
@@ -108,7 +109,7 @@ module pst(
     // sign extension
     assign sqdelta_sum = {{8{sqdelta[7]}}, sqdelta};
 
-    assign eval_out = $signed(piece_weights[ptype_in]) + $signed(sqdelta_sum);
+    assign eval_out = $signed(piece_weights[ptype_in]);// + $signed(sqdelta_sum);
 endmodule
 
 module square_evaluator#(parameter [5:0] SQ = 0)(
@@ -120,7 +121,7 @@ module square_evaluator#(parameter [5:0] SQ = 0)(
     logic signed [15:0] ps_eval;
 
     pst tab(
-        .sq_in(SQ),
+        .sq_in(board_in.pieces_w[SQ] ? SQ : {~SQ[5:3], SQ[2:0]}),
         .ptype_in(ptype),
         .eval_out(ps_eval)
     );
@@ -248,6 +249,10 @@ module move_evaluator(
     output eval_t eval_out,
     output logic  valid_out
 );
+    assign eval_out = (board_in.ply[1] ^ board_in.ply[4]) + board_in.pieces[QUEEN][15:0];
+    assign valid_out = valid_in;
+
+    /*
     logic [63:0][15:0] pst_eval;
     logic [63:0][15:0] pst_eval_abs;
 
@@ -261,39 +266,53 @@ module move_evaluator(
         end
     endgenerate
 
+    logic [1:0][7:0][15:0] psum_eval;
+    logic [1:0][7:0][15:0] psum_abs_eval;
+
     logic [1:0][15:0] sum_eval;
     logic [1:0][15:0] sum_abs_eval;
-    logic [1:0][1:0][5:0] king_locs;
 
     always_comb begin
-        logic signed [15:0] psum;
-        logic [15:0] psum_abs;
+        logic signed [15:0] full_psum;
+        logic [15:0] full_psum_abs;
 
-        psum = 0;
-        psum_abs = 0;
-        for (integer i = 0; i < 64; i = i + 1) begin
-            psum += $signed(pst_eval[i]);
-            psum_abs += pst_eval_abs[i];
+        for (integer rnk = 0; rnk < 8; rnk = rnk + 1) begin
+            logic signed [15:0] psum;
+            logic [15:0] psum_abs;
+
+            psum = 0;
+            psum_abs = 0;
+            for (integer fil = 0; fil < 8; fil = fil + 1) begin
+                psum += $signed(pst_eval[rnk * 8 + fil]);
+                psum_abs += pst_eval_abs[rnk * 8 + fil];
+            end
+
+            psum_eval[1][rnk] = psum;
+            psum_abs_eval[1][rnk] = psum_abs;
         end
 
-        sum_eval[1] = psum;
-        sum_abs_eval[1] = psum_abs;
+        full_psum = $signed(psum_eval[0][0]) + $signed(psum_eval[0][1]) + $signed(psum_eval[0][2]) + $signed(psum_eval[0][3]) + 
+            $signed(psum_eval[0][4]) + $signed(psum_eval[0][5]) + $signed(psum_eval[0][6]) + $signed(psum_eval[0][7]);
+        full_psum_abs = psum_abs_eval[0][0] + psum_abs_eval[0][1] + psum_abs_eval[0][2] + psum_abs_eval[0][3] + psum_abs_eval[0][4] + 
+            psum_abs_eval[0][5] + psum_abs_eval[0][6] + psum_abs_eval[0][7];
 
-        king_locs[1][0] = board_in.kings[0];
-        king_locs[1][1] = board_in.kings[1];
+        sum_eval[1] = full_psum;
+        sum_abs_eval[1] = full_psum_abs;
     end
 
-    logic [1:0] valid_pipe;
-    move_t [1:0] move_pipe;
-    logic [1:0][1:0][1:0] checkmate_pipe;
-    logic [1:0] is_black_pipe;
-    logic [1:0][1:0] bishop_pair_pipe;
+    logic [2:0][1:0][5:0] kings_pipe;
+    logic [2:0] valid_pipe;
+    move_t [2:0] move_pipe;
+    logic [2:0][1:0][1:0] checkmate_pipe;
+    logic [2:0] is_black_pipe;
+    logic [2:0][1:0] bishop_pair_pipe;
 
-    assign valid_pipe[1] = valid_in;
-    assign move_pipe[1] = last_move_in;
-    assign checkmate_pipe[1] = board_in.checkmate;
+    assign kings_pipe[2] = {board_in.kings[1], board_in.kings[0]};
+    assign valid_pipe[2] = valid_in;
+    assign move_pipe[2] = last_move_in;
+    assign checkmate_pipe[2] = board_in.checkmate;
     // after executing a move, opposite color - account for that here
-    assign is_black_pipe[1] = ~board_in.ply[0];
+    assign is_black_pipe[2] = ~board_in.ply[0];
 
     always_comb begin
         logic [63:0] black_bishop;
@@ -302,7 +321,7 @@ module move_evaluator(
         black_bishop = board_in.pieces[BISHOP] & ~board_in.pieces_w;
         white_bishop = board_in.pieces[BISHOP] & board_in.pieces_w;
 
-        bishop_pair_pipe[1] = {
+        bishop_pair_pipe[2] = {
             (black_bishop & 64'hCC55CC55CC55CC55) != 0 && (black_bishop & 64'h55CC55CC55CC55CC) != 0,
             (white_bishop & 64'hCC55CC55CC55CC55) != 0 && (white_bishop & 64'h55CC55CC55CC55CC) != 0
         };
@@ -311,21 +330,21 @@ module move_evaluator(
     logic signed [15:0] kw_eval;
     logic signed [15:0] kb_eval;
     pst kw_pst(
-        .sq_in(king_locs[0][0]),
+        .sq_in(kings_pipe[0][0]),
         .ptype_in(sum_abs_eval[0] <= 27000 ? 3'(KING + 2) : 3'(KING + 1)),
         .eval_out(kw_eval)
     );
     pst kb_pst(
-        .sq_in(king_locs[0][1]),
+        .sq_in({~kings_pipe[0][1][5:3], kings_pipe[0][1][2:0]}),
         .ptype_in(sum_abs_eval[0] <= 27000 ? 3'(KING + 2) : 3'(KING + 1)),
         .eval_out(kb_eval)
     );
 
-    logic signed [1:0] legal_pipe;
+    logic signed [2:0] legal_pipe;
     move_validator vd(
         .board_in(board_in),
         .last_move_in(last_move_in),
-        .legal_out(legal_pipe[1])
+        .legal_out(legal_pipe[2])
     );
 
     logic signed [15:0] eval_result;
@@ -345,18 +364,44 @@ module move_evaluator(
     assign move_out = move_pipe[0];
 
     always_ff @(posedge clk_in) begin
+        //for (integer i = 0; i < 2; i = i + 1) begin
+        //    valid_pipe[i] <= valid_pipe[i + 1] & ~rst_in;
+        //
+        //    psum_eval[i] <= psum_eval[i + 1];
+        //    psum_abs_eval[i] <= psum_abs_eval[i + 1];
+        //    sum_eval[i] <= sum_eval[i + 1];
+        //    sum_abs_eval[i] <= sum_abs_eval[i + 1];
+        //
+        //    move_pipe[i] <= move_pipe[i + 1];
+        //    legal_pipe[i] <= legal_pipe[i + 1];
+        //    bishop_pair_pipe[i] <= bishop_pair_pipe[i + 1];
+        //    checkmate_pipe[i] <= checkmate_pipe[i + 1];
+        //    kings_pipe[i] <= kings_pipe[i + 1];
+        //    is_black_pipe[i] <= is_black_pipe[i + 1];
+        //end
         valid_pipe[0] <= valid_pipe[1] & ~rst_in;
 
+        psum_eval[0] <= psum_eval[1];
+        psum_abs_eval[0] <= psum_abs_eval[1];
         sum_eval[0] <= sum_eval[1];
         sum_abs_eval[0] <= sum_abs_eval[1];
 
         move_pipe[0] <= move_pipe[1];
         legal_pipe[0] <= legal_pipe[1];
-
+        bishop_pair_pipe[0] <= bishop_pair_pipe[1];
         checkmate_pipe[0] <= checkmate_pipe[1];
-        king_locs[0] <= king_locs[1];
+        kings_pipe[0] <= kings_pipe[1];
         is_black_pipe[0] <= is_black_pipe[1];
+
+        valid_pipe[1] <= valid_pipe[2] & ~rst_in;
+        move_pipe[1] <= move_pipe[2];
+        legal_pipe[1] <= legal_pipe[2];
+        bishop_pair_pipe[1] <= bishop_pair_pipe[2];
+        checkmate_pipe[1] <= checkmate_pipe[2];
+        kings_pipe[1] <= kings_pipe[2];
+        is_black_pipe[1] <= is_black_pipe[2];
     end
+    */
 endmodule
 
 `default_nettype wire

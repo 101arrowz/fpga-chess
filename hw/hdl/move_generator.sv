@@ -192,20 +192,22 @@ module move_generator(
     logic [63:0] occupied;
     logic [63:0] allies;
     logic [63:0] enemies;
+
+    logic [63:0] occupied_next;
+    logic [63:0] allies_next;
+    logic [63:0] enemies_next;
+
     logic is_black;
 
     function [5:0] ctz64(logic [63:0] data);
         logic [5:0] tz;
-        logic has_priority;
+        logic [63:0] onehot;
 
-        tz = 6'bxxxxxx;
-        has_priority = 1'b1;
+        tz = 6'b000000;
+        onehot = data & -data;
 
         for (integer i = 0; i < 64; i = i + 1) begin
-            if (data[i] & has_priority) begin
-                tz = i;
-                has_priority = 1'b0;
-            end
+            tz = tz | ({6{onehot[i]}} & i);
         end
 
         return tz;
@@ -217,18 +219,18 @@ module move_generator(
         is_black = board.ply[0];
         ours = is_black ? ~board.pieces_w : board.pieces_w;
 
-        occupied = 0;
+        occupied_next = 0;
         for (integer i = 0; i < `NB_PIECES; i = i + 1) begin
             // iVerilog hack
             logic [4:0][63:0] pieces;
             pieces = board.pieces;
 
-            occupied = occupied | pieces[i];
+            occupied_next = occupied_next | pieces[i];
         end
-        occupied = occupied | (64'b1 << {board.kings[0].rnk, board.kings[0].fil}) | (64'b1 << {board.kings[1].rnk, board.kings[1].fil});
+        occupied_next = occupied_next | (64'b1 << board.kings[0]) | (64'b1 << board.kings[1]);
 
-        allies = occupied & ours;
-        enemies = occupied & ~ours;
+        allies_next = occupied_next & ours;
+        enemies_next = occupied_next & ~ours;
     end
 
     // king movegen
@@ -247,9 +249,11 @@ module move_generator(
     // can't use dynamic indexing...
     assign king_sq = is_black ? board.kings[1] : board.kings[0];
     assign king_castle = is_black ? board.castle[1] : board.castle[0];
-    assign king_castle_state_cur = valid_in ? 0 : king_castle_state;
+    //assign king_castle_state_cur = valid_in ? 0 : king_castle_state;
+    assign king_castle_state_cur = king_castle_state;
 
-    assign king_pl_dst_cur = valid_in ? king_all_dst & ~allies : king_pl_dst;
+    //assign king_pl_dst_cur = valid_in ? king_all_dst & ~allies : king_pl_dst;
+    assign king_pl_dst_cur = king_pl_dst;
 
     always_comb begin
         logic [7:0] king_rank_occ;
@@ -294,10 +298,12 @@ module move_generator(
     logic knight_go_next;
     logic knight_new;
 
-    assign knight_avail_cur = valid_in ? board.pieces[KNIGHT] & allies : knight_avail;
+    //assign knight_avail_cur = valid_in ? board.pieces[KNIGHT] & allies : knight_avail;
+    assign knight_avail_cur = knight_avail;
     assign knight_gen = ctz64(knight_avail_cur);
 
-    assign knight_pl_dst_cur = (valid_in | knight_new) ? knight_all_dst & ~allies : knight_pl_dst;
+    //assign knight_pl_dst_cur = (valid_in | knight_new) ? knight_all_dst & ~allies : knight_pl_dst;
+    assign knight_pl_dst_cur = knight_pl_dst;
 
     always_comb begin
         knight_move = 'x;
@@ -330,10 +336,12 @@ module move_generator(
     logic bishop_go_next;
     logic bishop_new;
 
-    assign bishop_avail_cur = valid_in ? (board.pieces[BISHOP] | board.pieces[QUEEN]) & allies : bishop_avail;
+    //assign bishop_avail_cur = valid_in ? (board.pieces[BISHOP] | board.pieces[QUEEN]) & allies : bishop_avail;
+    assign bishop_avail_cur = bishop_avail;
     assign bishop_gen = ctz64(bishop_avail_cur);
 
-    assign bishop_pl_dst_cur = (valid_in | bishop_new) ? bishop_all_dst & ~allies : bishop_pl_dst;
+    //assign bishop_pl_dst_cur = (valid_in | bishop_new) ? bishop_all_dst & ~allies : bishop_pl_dst;
+    assign bishop_pl_dst_cur = bishop_pl_dst;
 
     always_comb begin
         bishop_move = 'x;
@@ -366,10 +374,12 @@ module move_generator(
     logic rook_go_next;
     logic rook_new;
 
-    assign rook_avail_cur = valid_in ? (board.pieces[ROOK] | board.pieces[QUEEN]) & allies : rook_avail;
+    //assign rook_avail_cur = valid_in ? (board.pieces[ROOK] | board.pieces[QUEEN]) & allies : rook_avail;
+    assign rook_avail_cur = rook_avail;
     assign rook_gen = ctz64(rook_avail_cur);
 
-    assign rook_pl_dst_cur = (valid_in | rook_new) ? rook_all_dst & ~allies : rook_pl_dst;
+    //assign rook_pl_dst_cur = (valid_in | rook_new) ? rook_all_dst & ~allies : rook_pl_dst;
+    assign rook_pl_dst_cur = rook_pl_dst;
 
     always_comb begin
         rook_move = 'x;
@@ -403,10 +413,12 @@ module move_generator(
     logic pawn_go_next;
     logic pawn_new;
 
-    assign pawn_avail_cur = valid_in ? board.pieces[PAWN] & allies : pawn_avail;
+    //assign pawn_avail_cur = valid_in ? board.pieces[PAWN] & allies : pawn_avail;
+    assign pawn_avail_cur = pawn_avail;
     assign pawn_gen = ctz64(pawn_avail_cur);
 
-    assign pawn_move_state_cur = (valid_in | pawn_new) ? 0 : pawn_move_state;
+    //assign pawn_move_state_cur = (valid_in | pawn_new) ? 0 : pawn_move_state;
+    assign pawn_move_state_cur = pawn_move_state;
 
     function [63:0] bs64(logic [63:0] data);
         logic [63:0] out;
@@ -519,9 +531,9 @@ module move_generator(
     logic skip_pawn;
 
     assign skip_knight = king_move_valid;
-    assign skip_bishop = skip_knight | knight_move_valid;
-    assign skip_rook = skip_bishop | bishop_move_valid;
-    assign skip_pawn = skip_rook | rook_move_valid;
+    assign skip_bishop = skip_knight | (~knight_new & knight_move_valid);
+    assign skip_rook = skip_bishop | (~bishop_new & bishop_move_valid);
+    assign skip_pawn = skip_rook | (~rook_new & rook_move_valid);
 
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
@@ -530,97 +542,110 @@ module move_generator(
             bishop_avail <= 0;
             rook_avail <= 0;
             pawn_avail <= 0;
+
             valid_out <= 1'b0;
         end else begin
             if (valid_in) begin
                 board_reg <= board_in;
 
-                knight_avail <= knight_avail_cur;
-                bishop_avail <= bishop_avail_cur;
-                rook_avail <= rook_avail_cur;
-                pawn_avail <= pawn_avail_cur;
+                occupied <= occupied_next;
+                allies <= allies_next;
+                enemies <= enemies_next;
 
-                if (!king_move_valid) begin
-                    king_castle_state <= king_castle_state_cur;
-                end
+                king_pl_dst <= king_all_dst & ~allies_next;
+                knight_avail <= board.pieces[KNIGHT] & allies_next;
+                bishop_avail <= (board.pieces[BISHOP] | board.pieces[QUEEN]) & allies_next;
+                rook_avail <= (board.pieces[ROOK] | board.pieces[QUEEN]) & allies_next;
+                pawn_avail <= board.pieces[PAWN] & allies_next;
 
-                if (skip_knight || !knight_move_valid) begin
-                    knight_pl_dst <= knight_pl_dst_cur;
-                end
-                
-                if (skip_bishop || !bishop_move_valid) begin
-                    bishop_pl_dst <= bishop_pl_dst_cur;
-                end
+                king_castle_state <= 0;
 
-                if (skip_rook || !rook_move_valid) begin
-                    rook_pl_dst <= rook_pl_dst_cur;
-                end
+                knight_new <= 1;
+                bishop_new <= 1;
+                rook_new <= 1;
+                pawn_new <= 1;
 
-                if (skip_pawn || !pawn_move_valid) begin
-                    pawn_move_state <= pawn_move_state_cur;
-                end
-            end
-
-            if (!knight_move_valid || !skip_knight) begin
-                knight_new <= knight_go_next;
-
-                if (knight_go_next) begin
-                    knight_avail <= knight_avail_cur & (knight_avail_cur - 64'b1);
-                end
-            end
-
-            if (!bishop_move_valid || !skip_bishop) begin
-                bishop_new <= bishop_go_next;
-
-                if (bishop_go_next) begin
-                    bishop_avail <= bishop_avail_cur & (bishop_avail_cur - 64'b1);
-                end
-            end
-
-            if (!rook_move_valid || !skip_rook) begin
-                rook_new <= rook_go_next;
-
-                if (rook_go_next) begin
-                    rook_avail <= rook_avail_cur & (rook_avail_cur - 64'b1);
-                end
-            end
-
-            if (!pawn_move_valid || !skip_pawn) begin
-                pawn_new <= pawn_go_next;
-
-                if (pawn_go_next) begin
-                    pawn_avail <= pawn_avail_cur & (pawn_avail_cur - 64'b1);
-                end
-            end
-
-            if (king_move_valid) begin
-                move_out <= king_move;
-                valid_out <= 1'b1;
-
-                king_pl_dst <= king_pl_dst_cur & (king_pl_dst_cur - 64'b1);
-                king_castle_state <= king_castle_state_next;
-            end else if (knight_move_valid) begin
-                move_out <= knight_move;
-                valid_out <= 1'b1;
-
-                knight_pl_dst <= knight_pl_dst_cur & (knight_pl_dst_cur - 64'b1);
-            end else if (bishop_move_valid) begin
-                move_out <= bishop_move;
-                valid_out <= 1'b1;
-
-                bishop_pl_dst <= bishop_pl_dst_cur & (bishop_pl_dst_cur - 64'b1);
-            end else if (rook_move_valid) begin
-                move_out <= rook_move;
-                valid_out <= 1'b1;
-
-                rook_pl_dst <= rook_pl_dst_cur & (rook_pl_dst_cur - 64'b1);
-            end else if (pawn_move_valid) begin
-                move_out <= pawn_move;
-                valid_out <= 1'b1;
-
-                pawn_move_state <= pawn_move_state_next;
+                valid_out <= 1'b0;
             end else begin
                 valid_out <= 1'b0;
+                knight_new <= 0;
+                bishop_new <= 0;
+                rook_new <= 0;
+                pawn_new <= 0;
+
+                if (king_move_valid) begin
+                    move_out <= king_move;
+                    valid_out <= 1'b1;
+                    king_pl_dst <= king_pl_dst & (king_pl_dst - 64'b1);
+                end
+
+                if (knight_new) begin
+                    knight_pl_dst <= knight_all_dst & ~allies;
+                    knight_new <= 0;
+                end else begin
+                    if (knight_move_valid & ~skip_knight) begin
+                        move_out <= knight_move;
+                        valid_out <= 1'b1;
+
+                        knight_pl_dst <= knight_pl_dst_cur & (knight_pl_dst_cur - 64'b1);
+                    end
+
+                    if (knight_go_next) begin
+                        knight_new <= 1;
+                        knight_avail <= knight_avail_cur & (knight_avail_cur - 64'b1);
+                    end
+                end
+
+                if (bishop_new) begin
+                    bishop_pl_dst <= bishop_all_dst & ~allies;
+                    bishop_new <= 0;
+                end else begin
+                    if (bishop_move_valid & ~skip_bishop) begin
+                        move_out <= bishop_move;
+                        valid_out <= 1'b1;
+
+                        bishop_pl_dst <= bishop_pl_dst_cur & (bishop_pl_dst_cur - 64'b1);
+                    end
+
+                    if (bishop_go_next) begin
+                        bishop_new <= 1;
+                        bishop_avail <= bishop_avail_cur & (bishop_avail_cur - 64'b1);
+                    end
+                end
+    
+                if (rook_new) begin
+                    rook_pl_dst <= rook_all_dst & ~allies;
+                    rook_new <= 0;
+                end else begin
+                    if (rook_move_valid & ~skip_rook) begin
+                        move_out <= rook_move;
+                        valid_out <= 1'b1;
+
+                        rook_pl_dst <= rook_pl_dst_cur & (rook_pl_dst_cur - 64'b1);
+                    end
+
+                    if (rook_go_next) begin
+                        rook_new <= 1;
+                        rook_avail <= rook_avail_cur & (rook_avail_cur - 64'b1);
+                    end
+                end
+
+                if (pawn_new) begin
+                    pawn_move_state <= 0;
+                    pawn_new <= 0;
+                end else begin
+                    if (pawn_move_valid & ~skip_pawn) begin
+                        move_out <= pawn_move;
+                        valid_out <= 1'b1;
+
+                        pawn_move_state <= pawn_move_state_next;
+                    end
+
+                    if (pawn_go_next) begin
+                        pawn_new <= 1;
+                        pawn_avail <= pawn_avail_cur & (pawn_avail_cur - 64'b1);
+                    end
+                end
             end
         end
     end

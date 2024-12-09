@@ -18,7 +18,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
     output logic [31:0][7:0] info_buf,
     output logic info_valid_out
 );
-    localparam MAX_MOVES = 255;
+    localparam MAX_MOVES = 63;
     localparam NUM_SORTERS = 2;
 
     typedef struct packed {
@@ -175,11 +175,20 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
 
     move_t movegen_pipe[2];
     logic movegen_valid_pipe[2];
+    board_t movegen_board;
+
+    localparam MOVEGEN_BOARD_SYNC = 1;
+    synchronizer#(.COUNT(MOVEGEN_BOARD_SYNC), .WIDTH($bits(board_t))) mv_gen_board_sync(
+        .clk_in(clk_in),
+        .rst_in(rst_in),
+        .data_in(cur_board),
+        .data_out(movegen_board)
+    ); 
 
     move_generator movegen(
         .clk_in(clk_in),
         .rst_in(rst_in),
-        .board_in(cur_board),
+        .board_in(movegen_board),
         .valid_in(start_movegen),
         .move_out(movegen_pipe[1]),
         .valid_out(movegen_valid_pipe[1]),
@@ -201,16 +210,16 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
         .data_out(movegen_valid_pipe[0])
     );
 
-    move_t exec_move;
-    board_t exec_board;
-    logic exec_capture;
-    logic exec_valid;
+    move_t [1:0] exec_move_pipe;
+    board_t [1:0] exec_board_pipe;
+    logic [1:0] exec_capture_pipe;
+    logic [1:0] exec_valid_pipe;
 
     synchronizer#(.COUNT(1), .WIDTH($bits(move_t))) me_sync(
         .clk_in(clk_in),
         .rst_in(rst_in),
         .data_in(movegen_pipe[0]),
-        .data_out(exec_move)
+        .data_out(exec_move_pipe[1])
     );
 
     move_executor moveexec(
@@ -219,13 +228,39 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
         .move_in(movegen_pipe[0]),
         .board_in(cur_board),
         .valid_in(movegen_valid_pipe[0]),
-        .board_out(exec_board),
-        .captured_out(exec_capture),
-        .valid_out(exec_valid)
+        .board_out(exec_board_pipe[1]),
+        .captured_out(exec_capture_pipe[1]),
+        .valid_out(exec_valid_pipe[1])
+    );
+
+    localparam MOVE_EXEC_SYNC = 1;
+    synchronizer#(.COUNT(MOVE_EXEC_SYNC), .WIDTH($bits(board_t))) mex_board_sync(
+        .clk_in(clk_in),
+        .rst_in(rst_in),
+        .data_in(exec_board_pipe[1]),
+        .data_out(exec_board_pipe[0])
+    );
+    synchronizer#(.COUNT(MOVE_EXEC_SYNC), .WIDTH($bits(move_t))) mex_move_sync(
+        .clk_in(clk_in),
+        .rst_in(rst_in),
+        .data_in(exec_move_pipe[1]),
+        .data_out(exec_move_pipe[0])
+    );
+    synchronizer#(.COUNT(MOVE_EXEC_SYNC), .WIDTH(1)) mex_capture_sync(
+        .clk_in(clk_in),
+        .rst_in(rst_in),
+        .data_in(exec_capture_pipe[1]),
+        .data_out(exec_capture_pipe[0])
+    );
+    synchronizer#(.COUNT(MOVE_EXEC_SYNC), .WIDTH(1)) mex_valid_sync(
+        .clk_in(clk_in),
+        .rst_in(rst_in),
+        .data_in(exec_valid_pipe[1]),
+        .data_out(exec_valid_pipe[0])
     );
 
     logic do_eval_move;
-    assign do_eval_move = exec_valid && (cur_depth < target_depth || cur_check || exec_capture);
+    assign do_eval_move = exec_valid_pipe[0] && (cur_depth < target_depth || cur_check || exec_capture_pipe[0]);
 
     move_t eval_move;
     eval_t eval_result;
@@ -234,14 +269,24 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
     move_evaluator moveeval(
         .clk_in(clk_in),
         .rst_in(rst_in),
-        .last_move_in(exec_move),
-        .no_validate(1'b0),
-        .board_in(exec_board),
+        .last_move_in(exec_move_pipe[0]),
+        .no_validate(cur_state != EC_GENERATING),
+        .board_in(cur_state == EC_GENERATING ? exec_board_pipe[0] : cur_board),
         .valid_in(do_eval_move),
         .move_out(eval_move),
         .eval_out(eval_result),
         .valid_out(eval_valid)
     );
+
+    logic pos_eval_ready;
+    ec_depth_state old_state;
+    synchronizer#(.COUNT(3), .WIDTH($bits(ec_depth_state))) pos_eval_ec_state_sync(
+        .clk_in(clk_in),
+        .rst_in(rst_in),
+        .data_in(cur_state),
+        .data_out(old_state)
+    );
+    assign pos_eval_ready = old_state == EC_NEXT && cur_state == EC_NEXT;
 
     localparam MOVE_EVAL_SYNC = 1;
     synchronizer#(.COUNT(MOVE_EVAL_SYNC), .WIDTH($bits(eval_t))) mev_key_sync(
@@ -259,7 +304,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
     synchronizer#(.COUNT(MOVE_EVAL_SYNC), .WIDTH(1)) mev_valid_sync(
         .clk_in(clk_in),
         .rst_in(rst_in),
-        .data_in(eval_valid),
+        .data_in(eval_valid && old_state == EC_GENERATING),
         .data_out(sort_valid_in)
     );
 
@@ -274,7 +319,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
     logic last_move_sorted;
 
     // movegen -> [movegen sync -> move exec -> move exec sync -> move eval -> move eval sync] -> sorter
-    localparam GEN_TO_SORT_LATENCY = MOVEGEN_SYNC + 1 + 0 + 1 + MOVE_EVAL_SYNC;
+    localparam GEN_TO_SORT_LATENCY = MOVEGEN_SYNC + 1 + MOVE_EXEC_SYNC + 2 + MOVE_EVAL_SYNC;
     synchronizer#(.COUNT(GEN_TO_SORT_LATENCY), .WIDTH(1)) gen_sort_sync(
         .clk_in(clk_in),
         .rst_in(rst_in),
@@ -299,29 +344,6 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
         .captured_out(),
         .valid_out()
     );
-
-    eval_t stand_pat;
-    move_evaluator pos_eval(
-        .clk_in(clk_in),
-        .rst_in(rst_in),
-        .last_move_in(15'b0),
-        .no_validate(1'b1),
-        .board_in(cur_board),
-        .valid_in(cur_depth >= target_depth), // TODO
-        .move_out(),
-        .eval_out(stand_pat),
-        .valid_out() // TODO
-    );
-
-    logic old_depth_parity;
-    logic pos_eval_ready;
-    synchronizer#(.COUNT(1), .WIDTH(1)) pos_eval_ready_sync(
-        .clk_in(clk_in),
-        .rst_in(rst_in),
-        .data_in(cur_depth[0]),
-        .data_out(old_depth_parity)
-    );
-    assign pos_eval_ready = old_depth_parity == cur_depth[0];
 
     eval_t child_eval;
     assign child_eval = -pos_stack[cur_depth].score - (pos_stack[cur_depth].score <= -16'sd32700 ? 16'sd1 : 16'sd0);
@@ -365,13 +387,13 @@ module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)
                 EC_NEXT: begin
                     if (cur_depth >= target_depth) begin
                         if (pos_eval_ready) begin
-                            pos_stack[cur_depth].score <= stand_pat;
+                            pos_stack[cur_depth].score <= eval_result;
 
-                            if (stand_pat > pos_stack[cur_depth].alpha) begin
-                                pos_stack[cur_depth].alpha <= stand_pat;
+                            if (eval_result > pos_stack[cur_depth].alpha) begin
+                                pos_stack[cur_depth].alpha <= eval_result;
                             end
 
-                            if (stand_pat > pos_stack[cur_depth].beta) begin
+                            if (eval_result > pos_stack[cur_depth].beta) begin
                                 cur_state <= EC_FINISH;
                             end
 
