@@ -19,7 +19,7 @@ async def test_a(dut):
     dut.rst_in.value = 1
     await ClockCycles(dut.clk_in, 5)
     dut.rst_in.value = 0
-    assert dut.ready_out
+    dut.no_validate.value = 1
 
     occupancies = {
         'knight': 0x4200000000000042,
@@ -31,8 +31,8 @@ async def test_a(dut):
         'white': 0x000000000000ffff
     }
 
-    occupancies['queen'] |= 1 << 36
-    occupancies['white'] |= 1 << 36
+    # occupancies['queen'] |= 1 << 36
+    # occupancies['white'] |= 1 << 36
 
     king_w = 0x04
     king_b = 0x3c
@@ -40,32 +40,33 @@ async def test_a(dut):
     en_passant = 0x0
     castle = 0xf
 
-    ply = 1
+    ply = 0
     ply50 = 0
 
     board_init = (occupancies['pawn'] << 364) | (occupancies['queen'] << 300) | (occupancies['rook'] << 236) | (occupancies['bishop'] << 172) | (occupancies['knight'] << 108) | \
         (occupancies['white'] << 44) | (king_b << 38) | (king_w << 32) | (checkmate << 30) | (en_passant << 26) | (castle << 22) | (ply << 7) | (ply50)
 
     dut.board_in.value = board_init
+    dut.last_move_in.value = (16 << 9) | (1 << 3) | 0
     dut.valid_in.value = 1
     await ClockCycles(dut.clk_in, 1)
     dut.valid_in.value = 0
 
-    await ClockCycles(dut.clk_in, 70)
+    await ClockCycles(dut.clk_in, 40)
 
 def movegen_runner():
     hdl_toplevel_lang = os.getenv("HDL_TOPLEVEL_LANG", "verilog")
     sim = os.getenv("SIM", "icarus")
     proj_path = Path(__file__).resolve().parent.parent
     sys.path.append(str(proj_path / "sim" / "model"))
-    sources = [proj_path / "hdl" / "move_generator.sv"]
+    sources = [proj_path / "hdl" / "move_generator.sv", proj_path / "hdl" / "move_evaluator.sv"]
     build_test_args = ["-Wall"]
     parameters = {}
     sys.path.append(str(proj_path / "sim"))
     runner = get_runner(sim)
     runner.build(
         sources=sources,
-        hdl_toplevel="move_generator",
+        hdl_toplevel="move_evaluator",
         includes=[proj_path / "hdl"],
         always=True,
         build_args=build_test_args,
@@ -75,8 +76,8 @@ def movegen_runner():
     )
     run_test_args = []
     runner.test(
-        hdl_toplevel="move_generator",
-        test_module="test_move_generator",
+        hdl_toplevel="move_evaluator",
+        test_module="test_move_evaluator",
         test_args=run_test_args,
         waves=True
     )
