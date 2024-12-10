@@ -4,7 +4,7 @@
 
 typedef enum {EC_READY, EC_NEXT, EC_GENERATING, EC_WRITEBACK, EC_FINISH} ec_depth_state;
 
-module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)(
+module engine_coordinator_sim#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)(
     input wire    clk_in,
     input wire    rst_in,
     input board_t board_in,
@@ -19,7 +19,7 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
     output logic info_valid_out
 );
     localparam MAX_MOVES = 64;
-    localparam NUM_SORTERS = 1;
+    localparam NUM_SORTERS = 2;
 
     typedef logic [$clog2(MAX_MOVES) - 1:0] move_idx_t;
 

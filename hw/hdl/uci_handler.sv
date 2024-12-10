@@ -227,8 +227,8 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                         default: best_move_append=0;
                     endcase
                     best_move_buff<={best_move_append, 8'("1"+best_move_in.dst.rnk), 8'("a"+best_move_in.dst.fil), 8'("1"+best_move_in.src.rnk), 8'("a"+best_move_in.src.fil), " evomtseb"};
-                    exec_valid_in<=1;
-                    exec_move_in<=best_move_in;
+                    //exec_valid_in<=1;
+                    //exec_move_in<=best_move_in;
                 end
                 
             end

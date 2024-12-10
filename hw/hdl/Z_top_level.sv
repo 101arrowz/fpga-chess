@@ -89,7 +89,7 @@ module top_level
       .board_valid_in(board_valid),
       .go_in(go),
       .time_in(1),
-      .depth_in(7),
+      .depth_in(sw[4:0]),
       .ready_out(ec_ready), // TODO
       .bestmove_out(move),
       .valid_out(move_valid),
