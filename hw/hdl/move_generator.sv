@@ -454,7 +454,7 @@ module move_generator(
             logic has_rcap;
 
             local_occ = is_black ? bs64(occupied) >> {~pawn_gen[5:3], pawn_gen[2:0]} : occupied >> pawn_gen;
-            local_opp = is_black ? bs64(occupied & ~board.pieces_w) >> {~pawn_gen[5:3], pawn_gen[2:0]} : (occupied & board.pieces_w) >> pawn_gen;
+            local_opp = is_black ? bs64(occupied & board.pieces_w) >> {~pawn_gen[5:3], pawn_gen[2:0]} : (occupied & ~board.pieces_w) >> pawn_gen;
 
             fw_inc = is_black ? 6'b111000 : 6'b001000;
             is_start_rank = pawn_gen[5:3] == (is_black ? 3'b110 : 3'b001);

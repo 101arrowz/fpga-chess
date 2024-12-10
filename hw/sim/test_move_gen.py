@@ -17,6 +17,7 @@ async def test_a(dut):
     """cocotb test for seven segment controller"""
     dut._log.info("Starting...")
     read_string=[]
+    found_moves=[]
     def print_board(src, dst):
         val=""
         pieces=dut.uci.board_out.value>>108
@@ -61,7 +62,9 @@ async def test_a(dut):
             if(dut.movegen.valid_out.value):
                 dst = (dut.movegen.move_out.value>>3)&63
                 src = (dut.movegen.move_out.value>>9)&63
-                print(str(chr(ord('a')+(src&7)))+str(chr(ord('1')+((src>>3)&7)))+str(chr(ord('a')+(dst&7)))+str(chr(ord('1')+((dst>>3)&7))))
+                move=str(chr(ord('a')+(src&7)))+str(chr(ord('1')+((src>>3)&7)))+str(chr(ord('a')+(dst&7)))+str(chr(ord('1')+((dst>>3)&7)))
+                found_moves.append(move)
+                print(move)
                 print_board(src, dst)
     cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     dut.rst_in.value = 1
@@ -85,6 +88,7 @@ async def test_a(dut):
     await wait(10)
 
     proj_path = Path(__file__).resolve().parent.parent
+    board=None
     with open(proj_path / "sim" / "test.pgn") as pgn:
         game = read_game(pgn)
         board = game.board()
@@ -96,9 +100,18 @@ async def test_a(dut):
             print("Move", i, ":", moves[i])
             await print_command("move " + moves[i])
             await wait(100)
+            board.push_uci(str(moves[i]))
     print_board(-1, -1)
     await print_command("go")
-    await wait(100)
+    await wait(400)
+    legal_moves = list(board.legal_moves)
+    for i in range(len(legal_moves)):
+        legal_moves[i]=str(legal_moves[i])
+    found_moves.sort()
+    legal_moves.sort()
+    print(found_moves)
+    print(legal_moves)
+    print(found_moves==legal_moves)
 
 
 
