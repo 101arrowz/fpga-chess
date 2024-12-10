@@ -17,11 +17,11 @@ async def test_a(dut):
     """cocotb test for seven segment controller"""
     dut._log.info("Starting...")
     read_string=[]
-    def print_board():
+    def print_board(brd=dut.board_out.value):
         val=""
-        pieces=dut.board_out.value>>108
-        pieces_w=(dut.board_out.value>>44)&(0xFFFF_FFFF_FFFF_FFFF)
-        kings=(dut.board_out.value>>32)&4095
+        pieces=brd>>108
+        pieces_w=(brd>>44)&(0xFFFF_FFFF_FFFF_FFFF)
+        kings=(brd>>32)&4095
         ind=0
         for row in range(8):
             for col in range(8):
@@ -130,7 +130,12 @@ async def test_a(dut):
     # await print_command("move b1c3 b8c6")
     # await wait(20)
     
-
+    print_board(0x00ff00000000ff000800000000000008810000000000008124000000000000244200000000000042000000000000fffff0403c00000)
+    print_board(0x00ff00000000ff000800000000000008810000000000008124000000000000244200000000200002000000000020fffff0417c00081)
+    print_board(0x00ff00000000ff000800000000000008810000000000008124000000000000244200000000200002000000000020fffff0417c00081)
+    print_board(0x00ff00000000ff000800000000000008810000000000008124000000000000244200000000040040000000000004fffff040bc00081)
+    print_board(0x00ff00001000ef000800000000000008810000000000008124000000000000244200000000000042000000001000fffff0413c00080)
+    print_board(0x00ff00000000ff000800000000000008810000000000008124000000000000244200000000000042000000000000fffff0403c00000)
 
 
 
