@@ -4,7 +4,7 @@
 
 typedef enum {EC_READY, EC_NEXT, EC_GENERATING, EC_WRITEBACK, EC_FINISH} ec_depth_state;
 
-module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)(
+module engine_coordinator#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE = 10)(
     input wire    clk_in,
     input wire    rst_in,
     input board_t board_in,
@@ -18,45 +18,39 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
     output logic [31:0][7:0] info_buf,
     output logic info_valid_out
 );
-    localparam MAX_MOVES = 64;
-    localparam NUM_SORTERS = 1;
+    localparam MAX_MOVES = 63;
+    localparam NUM_SORTERS = 2;
 
-    typedef logic [$clog2(MAX_MOVES) - 1:0] move_idx_t;
+    typedef struct packed {
+        board_t board;
+        logic signed [15:0] alpha;
+        logic signed [15:0] beta;
+        logic signed [15:0] score;
+        logic [$clog2(MAX_MOVES) - 1:0] move_idx;
+        logic [$clog2(MAX_MOVES) - 1:0] num_moves;
+    } position_stack_entry_t;
 
-    board_t [MAX_DEPTH - 1:0] pos_stack_board;
-    eval_t [MAX_DEPTH - 1:0] pos_stack_alpha;
-    eval_t [MAX_DEPTH - 1:0] pos_stack_beta;
-    eval_t [MAX_DEPTH - 1:0] pos_stack_score;
-    move_idx_t [MAX_DEPTH - 1:0] pos_stack_move_idx;
-    move_idx_t [MAX_DEPTH - 1:0] pos_stack_num_moves;
 
     logic [$clog2(MAX_DEPTH) - 1:0] cur_depth;
     logic [$clog2(MAX_DEPTH) - 1:0] target_depth;
     ec_depth_state cur_state;
-    move_t old_best;
+    move_t cur_best;
 
+    position_stack_entry_t [MAX_DEPTH - 1:0] pos_stack;
     move_t prefetch_move;
 
     move_t cur_move0;
     eval_t move0_score;
-    logic [$bits(eval_t)-1:0] move0_key;
-    assign move0_score = -$signed(pos_stack_score[1]);
-    assign move0_key = {~move0_score[$bits(eval_t) - 1], move0_score[$bits(eval_t) - 2:0]};
+    assign move0_score = -pos_stack[1].score;
 
     logic [(MAX_MOVES-1):0][$bits(move_t)-1:0] move0_values;
     logic [(MAX_MOVES-1):0][$bits(eval_t)-1:0] move0_keys;
-
-    move_t cur_best;
-    eval_t cur_best_eval;
-
-    assign cur_best = move0_values[0];
-    assign cur_best_eval = {~move0_keys[0][$bits(eval_t) - 1], move0_keys[0][$bits(eval_t) - 2:0]};
 
     stream_sorter#(.MAX_LEN(MAX_MOVES), .KEY_BITS($bits(eval_t)), .VALUE_BITS($bits(move_t))) root_best(
         .clk_in(clk_in),
         .rst_in(rst_in || (cur_state == EC_FINISH && cur_depth == 0)),
         .value_in(cur_move0),
-        .key_in(move0_key),
+        .key_in(move0_score),
         .valid_in(cur_depth == 1 && cur_state == EC_FINISH),
         .dequeue_in(),
         .array_out(move0_values),
@@ -69,14 +63,13 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
     logic [NUM_SORTERS - 1:0][$clog2(MAX_MOVES) - 1:0] sort_i;
 
     logic [NUM_SORTERS - 1:0][$bits(move_t)-1:0] sort_top_value;
-    logic [NUM_SORTERS - 1:0][$bits(eval_t)-1:0] sort_top_key;
+    logic [NUM_SORTERS - 1:0][$bits(move_t)-1:0] sort_top_key;
 
     logic [$bits(move_t)-1:0] sort_new_value;
     logic [$bits(eval_t)-1:0] sort_new_key;
     logic sort_valid_in;
 
     logic [$clog2(NUM_SORTERS + 1) - 1:0] cur_sorter;
-    logic [$clog2(NUM_SORTERS) - 1:0] prev_sorter;
     logic [$clog2(NUM_SORTERS + 1) - 1:0] drain_sorter;
     logic [$clog2(NUM_SORTERS + 1) - 1:0] next_drain_sorter;
     logic [$clog2(NUM_SORTERS + 1) - 1:0] next_free_sorter;
@@ -87,17 +80,16 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
         .RAM_PERFORMANCE("HIGH_PERFORMANCE") // use 2-cycle for now since we don't need great latency
     ) move_stack(
         .clka(clk_in),
-        .addra({cur_depth - 1'b1, pos_stack_move_idx[cur_depth - 1]}),
+        .addra({target_depth - 1'b1, pos_stack[cur_depth - 1].move_idx}),
         .douta(prefetch_move),
         .wea(1'b0),
 
-        .addrb({sort_depth[drain_sorter - 1], sort_i[drain_sorter - 1]}),
+        .addrb({sort_depth[drain_sorter - 1] - 1'b1, sort_i[drain_sorter - 1]}),
         .dinb(sort_top_value[drain_sorter - 1]),
         .web(drain_sorter != 0 && sort_len[drain_sorter - 1] > 0),
 
         .rsta(1'b0),
         .rstb(1'b0),
-        .regcea(1'b1),
         .ena(1'b1),
         .enb(1'b1)
     );
@@ -169,14 +161,11 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
 
     board_t cur_board;
     logic cur_check;
-    assign cur_board = pos_stack_board[cur_depth];
-
-    logic [5:0] cur_king;
-    assign cur_king = cur_board.ply[0] ? cur_board.kings[1] : cur_board.kings[0];
+    assign cur_board = pos_stack[cur_depth].board;
 
     check_finder cf(
         .board_in(cur_board),
-        .king_pos_in(cur_king),
+        .king_pos_in(cur_board.kings[cur_board.ply[0]]),
         .is_black_in(cur_board.ply[0]),
         .is_check_out(cur_check)
     );
@@ -205,9 +194,6 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
         .valid_out(movegen_valid_pipe[1]),
         .ready_out(movegen_ready)
     );
-
-    logic mvp;
-    assign mvp = movegen_valid_pipe[1];
 
     localparam MOVEGEN_SYNC = 1;
     synchronizer#(.COUNT(MOVEGEN_SYNC), .WIDTH($bits(move_t))) mv_gen_sync(
@@ -247,9 +233,6 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
         .valid_out(exec_valid_pipe[1])
     );
 
-    logic evp;
-    assign evp = exec_valid_pipe[1];
-
     localparam MOVE_EXEC_SYNC = 1;
     synchronizer#(.COUNT(MOVE_EXEC_SYNC), .WIDTH($bits(board_t))) mex_board_sync(
         .clk_in(clk_in),
@@ -283,11 +266,6 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
     eval_t eval_result;
     logic eval_valid;
 
-    logic ecp;
-    move_t emp;
-    assign ecp = exec_capture_pipe[0];
-    assign emp = exec_move_pipe[0];
-
     move_evaluator moveeval(
         .clk_in(clk_in),
         .rst_in(rst_in),
@@ -303,7 +281,7 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
     logic pos_eval_ready;
     eval_t stand_pat;
     ec_depth_state old_state;
-    synchronizer#(.COUNT(2), .WIDTH($bits(ec_depth_state))) pos_eval_ec_state_sync(
+    synchronizer#(.COUNT(3), .WIDTH($bits(ec_depth_state))) pos_eval_ec_state_sync(
         .clk_in(clk_in),
         .rst_in(rst_in),
         .data_in(cur_state),
@@ -352,17 +330,6 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
         .data_out(last_move_sorted)
     );
 
-    logic start_gen_bit;
-    logic old_gen_bit;
-    logic gen_propagated;
-    synchronizer#(.COUNT(GEN_TO_SORT_LATENCY + 1), .WIDTH(1)) gen_propagated_sync(
-        .clk_in(clk_in),
-        .rst_in(rst_in),
-        .data_in(start_gen_bit),
-        .data_out(old_gen_bit)
-    );
-    assign gen_propagated = old_gen_bit == start_gen_bit;
-
     board_t next_pos;
     move_t np_move;
     logic np_valid;
@@ -373,8 +340,8 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
     move_executor next_pos_gen(
         .clk_in(clk_in),
         .rst_in(rst_in),
-        .move_in(np_move),
-        .board_in(cur_state == EC_GENERATING ? cur_board : pos_stack_board[cur_depth - 1]),
+        .move_in(movegen_pipe[0]),
+        .board_in(cur_board),
         .valid_in(np_valid),
         .board_out(next_pos),
         .captured_out(),
@@ -382,12 +349,10 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
     );
 
     eval_t child_eval;
-    assign child_eval = -$signed(pos_stack_score[cur_depth]) - ($signed(pos_stack_score[cur_depth]) <= -16'sd32700 ? 16'sd1 : 16'sd0);
+    assign child_eval = -pos_stack[cur_depth].score - (pos_stack[cur_depth].score <= -16'sd32700 ? 16'sd1 : 16'sd0);
 
     eval_t new_alpha;
-    assign new_alpha = $signed(child_eval) > $signed(pos_stack_alpha[cur_depth - 1]) ? child_eval : $signed(pos_stack_alpha[cur_depth - 1]);
-
-    logic [$clog2((1 + 2) + 1):0] finish_latency;
+    assign new_alpha = child_eval > pos_stack[cur_depth - 1].alpha ? child_eval : pos_stack[cur_depth - 1].alpha;
 
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
@@ -397,9 +362,8 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
             valid_out <= 0;
             info_valid_out <= 0;
             cur_sorter <= 0;
-            start_gen_bit <= 0;
         end else if (cur_state != EC_READY && time_in == 0) begin
-            bestmove_out <= old_best;
+            bestmove_out <= cur_best;
             valid_out <= 1;
             cur_state <= EC_READY;
         end else begin
@@ -407,17 +371,17 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
                 EC_READY: begin
                     valid_out <= 0;
                     if (board_valid_in) begin
-                        pos_stack_board[0] <= board_in;
+                        pos_stack[0].board <= board_in;
                     end
 
                     if (go_in) begin
                         cur_depth <= 0;
                         ready_out <= 0;
                         target_depth <= 1;
-                        pos_stack_alpha[0] <= -16'sd32760;
-                        pos_stack_score[0] <= -16'sd32760;
-                        pos_stack_beta[0] <= 16'sd32760;
-                        pos_stack_move_idx[0] <= 1;
+                        pos_stack[0].alpha <= -16'sd32760;
+                        pos_stack[0].score <= -16'sd32760;
+                        pos_stack[0].beta <= 16'sd32760;
+                        pos_stack[0].move_idx <= 1;
                         cur_state <= EC_NEXT;
                     end else begin
                         ready_out <= 1;
@@ -427,21 +391,20 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
                     if (cur_depth >= target_depth) begin
                         if (pos_eval_ready) begin
                             // now evaluating for us...flip sign
-                            pos_stack_score[cur_depth] <= stand_pat;
+                            pos_stack[cur_depth].score <= stand_pat;
 
-                            if ($signed(stand_pat) > $signed(pos_stack_alpha[cur_depth])) begin
-                                pos_stack_alpha[cur_depth] <= stand_pat;
+                            if (stand_pat > pos_stack[cur_depth].alpha) begin
+                                pos_stack[cur_depth].alpha <= stand_pat;
                             end
 
-                            if ($signed(stand_pat) > $signed(pos_stack_beta[cur_depth]) || cur_depth >= MAX_DEPTH || cur_depth >= target_depth + MAX_QUIESCE) begin
-                                finish_latency <= 0;
+                            if (stand_pat > pos_stack[cur_depth].beta) begin
                                 cur_state <= EC_FINISH;
-                            end else if (movegen_ready && next_free_sorter != 0) begin
+                            end
+
+                            if (movegen_ready && next_free_sorter != 0) begin
                                 // NOTE: should always be true on the first cycle but doesn't hurt to check
                                 start_movegen <= 1;
                                 cur_sorter <= next_free_sorter;
-                                sort_depth[next_free_sorter - 1] <= cur_depth;
-                                start_gen_bit <= ~start_gen_bit;
                                 cur_state <= EC_GENERATING;
                             end
                         end 
@@ -449,58 +412,45 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
                         // NOTE: should always be true on the first cycle but doesn't hurt to check
                         start_movegen <= 1;
                         cur_sorter <= next_free_sorter;
-                        sort_depth[next_free_sorter - 1] <= cur_depth;
-                        start_gen_bit <= ~start_gen_bit;
                         cur_state <= EC_GENERATING;
                     end
                 end
                 EC_GENERATING: begin
                     start_movegen <= 0;
-                    if (gen_propagated & last_move_sorted) begin
+                    if (last_move_sorted) begin
                         // getting next position from next_pos_gen already
                         cur_state <= EC_WRITEBACK;
+                        pos_stack[cur_depth].num_moves <= sort_len[cur_sorter - 1];
                         // note: due to the assumptions we make this strategy only works with 2 or fewer sorters
                         cur_sorter <= 0; // drain can begin *after* the next cycle (2 cycles from now)
-                        prev_sorter <= cur_sorter - 1;
-                        if (cur_depth == 0) begin
-                            cur_move0 <= top_sort_move;
-                        end
                     end
                 end
                 EC_WRITEBACK: begin
-                    finish_latency <= 0;
-                    if (sort_len[prev_sorter] == 0) begin
-                        // otherwise checkmate/quiescent search and default to -32760/static_eval
-                        if (cur_depth < target_depth && !cur_check) begin
-                            pos_stack_score[cur_depth] <= 16'sd0;
+                    if (pos_stack[cur_depth].num_moves == 0) begin
+                        // otherwise checkmate and default to -32760
+                        if (!cur_check) begin
+                            pos_stack[cur_depth].score <= 0;
                         end
                         cur_state <= EC_FINISH;
                     end else begin
                         cur_depth <= cur_depth + 1;
-                        //$display(sort_len[prev_sorter]);
-                        pos_stack_num_moves[cur_depth] <= sort_len[prev_sorter];
-                        pos_stack_score[cur_depth + 1] <= next_pos.ply50 >= 7'd100 ? 16'sd0 : -16'sd32760;
-                        pos_stack_alpha[cur_depth + 1] <= -$signed(pos_stack_beta[cur_depth]);
-                        pos_stack_beta[cur_depth + 1] <= -$signed(pos_stack_alpha[cur_depth]);
-                        pos_stack_board[cur_depth + 1] <= next_pos;
-                        pos_stack_move_idx[cur_depth + 1] <= 1;
-                        cur_state <= next_pos.ply50 >= 7'd100 || (next_pos.ply[0] ? next_pos.checkmate[1] : next_pos.checkmate[0]) ? EC_FINISH : EC_NEXT;
+                        if (cur_depth == 0) begin
+                            cur_move0 <= top_sort_move;
+                        end
+                        
+                        pos_stack[cur_depth + 1].score <= next_pos.ply50 >= 7'd100 ? 16'sd0 : -16'sd32760;
+                        pos_stack[cur_depth + 1].alpha <= -pos_stack[cur_depth].beta;
+                        pos_stack[cur_depth + 1].beta <= -pos_stack[cur_depth].alpha;
+                        pos_stack[cur_depth + 1].board <= next_pos;
+                        pos_stack[cur_depth + 1].move_idx <= 1;
+                        cur_state <= next_pos.ply50 >= 7'd100 || next_pos.checkmate[next_pos.ply[0]] ? EC_FINISH : EC_NEXT;
                     end
                 end
                 EC_FINISH: begin
                     if (cur_depth == 0) begin
-                        old_best <= cur_best;
-                        //$display("best move:");
-                        //$display(cur_best);
-                        //$display("eval:");
-                        //$display(cur_best_eval);
                         if (target_depth < depth_in) begin
                             // iterative deepening
                             target_depth <= target_depth + 1;
-                            pos_stack_alpha[0] <= -16'sd32760;
-                            pos_stack_score[0] <= -16'sd32760;
-                            pos_stack_beta[0] <= 16'sd32760;
-                            pos_stack_move_idx[0] <= 1;
                             cur_state <= EC_NEXT;
                         end else begin
                             bestmove_out <= cur_best;
@@ -512,27 +462,22 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE =
                             cur_move0 <= prefetch_move;
                         end
 
-                        pos_stack_alpha[cur_depth - 1] <= new_alpha;
+                        pos_stack[cur_depth - 1].alpha <= new_alpha;
 
-                        if ($signed(child_eval) > $signed(pos_stack_score[cur_depth - 1])) begin
-                            pos_stack_score[cur_depth - 1] <= child_eval;
+                        if (child_eval > pos_stack[cur_depth - 1].score) begin
+                            pos_stack[cur_depth - 1].score <= child_eval;
                         end
 
-                        if ($signed(child_eval) > $signed(pos_stack_beta[cur_depth - 1]) || pos_stack_move_idx[cur_depth - 1] >= pos_stack_num_moves[cur_depth - 1]) begin
-                            finish_latency <= 2 + 1;
+                        if (child_eval > pos_stack[cur_depth - 1].beta || pos_stack[cur_depth - 1].move_idx >= pos_stack[cur_depth - 1].num_moves) begin
                             cur_depth <= cur_depth - 1;
                         end else begin
-                            if (finish_latency != 0) begin
-                                finish_latency <= finish_latency - 1;
-                            end else begin
-                                pos_stack_move_idx[cur_depth - 1] <= pos_stack_move_idx[cur_depth - 1] + 1;
-                                pos_stack_board[cur_depth] <= next_pos;
-                                // alpha remains the same for child because beta doesn't change in parent
-                                pos_stack_beta[cur_depth] <= -$signed(new_alpha);
-                                pos_stack_move_idx[cur_depth] <= 1;
+                            pos_stack[cur_depth - 1].move_idx <= pos_stack[cur_depth - 1].move_idx + 1;
+                            pos_stack[cur_depth].board <= next_pos;
+                            // alpha remains the same for child because beta doesn't change in parent
+                            pos_stack[cur_depth].beta <= -new_alpha;
+                            pos_stack[cur_depth].move_idx <= 1;
 
-                                cur_state <= EC_NEXT;
-                            end
+                            cur_state <= EC_NEXT;
                         end
                     end
                 end
