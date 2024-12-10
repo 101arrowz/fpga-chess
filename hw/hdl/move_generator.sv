@@ -577,6 +577,7 @@ module move_generator(
                     move_out <= king_move;
                     valid_out <= 1'b1;
                     king_pl_dst <= king_pl_dst & (king_pl_dst - 64'b1);
+                    king_castle_state<=king_castle_state_next;
                 end
 
                 if (knight_new) begin

@@ -1,0 +1,6 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1733788730" />
+    <testcase name="test_a" classname="test_move_gen" file="c:\Users\disup\Programming\62050\fpga-chess\hw\sim\test_move_gen.py" lineno="15" time="0.9369997978210449" sim_time_ns="17940.001" ratio_time="19146.216511165472" />
+  </testsuite>
+</testsuites>

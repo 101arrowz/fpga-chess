@@ -17,11 +17,11 @@ async def test_a(dut):
     """cocotb test for seven segment controller"""
     dut._log.info("Starting...")
     read_string=[]
-    def print_board():
+    def print_board(src, dst):
         val=""
-        pieces=dut.board_out.value>>108
-        pieces_w=(dut.board_out.value>>44)&(0xFFFF_FFFF_FFFF_FFFF)
-        kings=(dut.board_out.value>>32)&4095
+        pieces=dut.uci.board_out.value>>108
+        pieces_w=(dut.uci.board_out.value>>44)&(0xFFFF_FFFF_FFFF_FFFF)
+        kings=(dut.uci.board_out.value>>32)&4095
         ind=0
         for row in range(8):
             for col in range(8):
@@ -31,7 +31,10 @@ async def test_a(dut):
                     esc="\033[90m"
                 else:
                     esc="\033[34m"
-                if((pieces>>(ind))&1):
+                if(ind==src or ind==dst):
+                    esc="\033[31m"
+                    piece="*"
+                elif((pieces>>(ind))&1):
                     piece="N"
                 elif((pieces>>(ind)>>64)&1):
                     piece="B"
@@ -55,8 +58,11 @@ async def test_a(dut):
             cycles-=1
             if(dut.char_out_ready and dut.char_out_valid):
                 read_string.append(chr(dut.char_out.value))
-            if(dut.board_out_valid.value):
-                print_board()
+            if(dut.movegen.valid_out.value):
+                dst = (dut.movegen.move_out.value>>3)&63
+                src = (dut.movegen.move_out.value>>9)&63
+                print(str(chr(ord('a')+(src&7)))+str(chr(ord('1')+((src>>3)&7)))+str(chr(ord('a')+(dst&7)))+str(chr(ord('1')+((dst>>3)&7))))
+                print_board(src, dst)
     cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     dut.rst_in.value = 1
     await ClockCycles(dut.clk_in, 5)
@@ -71,62 +77,28 @@ async def test_a(dut):
             dut.char_in.value=0
             dut.char_in_valid.value=0
             await wait(4)
-    async def request_info(info):
-        dut.info_in.value=int.from_bytes(info.encode('utf-8'), byteorder='little')
-        dut.info_in_valid.value=1
-        await wait(1)
-        dut.info_in.value=0
-        dut.info_in_valid.value=0
-        await wait(1)
-    async def request_bestmove(src_col, src_row, dst_col, dst_row, special):
-        dut.best_move_in.value=special|(dst_col<<3)|(dst_row<<6)|(src_col<<9)|(src_row<<12)
-        dut.best_move_in_valid.value=1
-        await wait(1)
-        dut.best_move_in.src_col=0
-        dut.best_move_in.src_row=0
-        dut.best_move_in.dst_col=0
-        dut.best_move_in.dst_row=0
-        dut.best_move_in_valid.value=0
-        dut.best_move_in.special=0
-        await wait(1)
-
-    """await print_command("uci")
-    await wait(100)
-
-    await print_command("debug on")
+    dut.rst_in.value = 1
+    await wait(5)
+    dut.rst_in.value = 0
+    await wait(5)
+    print_command("position startpos")
     await wait(10)
 
-    await request_info("ABC")
-    await wait(100)
-    await request_info("Yada")
-    await wait(100)
-    await request_info("Error: Test")
-    await wait(100)
-
-    await print_command("go")
-
-    await request_bestmove(0, 0, 3, 4, 6)
-    await wait(100)
-
-    await print_command("debug off")
-    await wait(20)
-
-    await print_command("position startpos moves a1d2 b3c4q f6e3 f6e3r f6e3n f6e3u f6e3 f6e3b")
-    await wait(20)
-
-    
-    print(''.join(read_string))"""
     proj_path = Path(__file__).resolve().parent.parent
     with open(proj_path / "sim" / "test.pgn") as pgn:
         game = read_game(pgn)
         board = game.board()
         moves = [move.uci() for move in game.mainline_moves()]
+        move = moves[0]
         for i in range(len(moves)):
+            if(i==11):
+                break
             print("Move", i, ":", moves[i])
             await print_command("move " + moves[i])
-            await wait(20)
-            if(i==10):
-                break
+            await wait(100)
+    print_board(-1, -1)
+    await print_command("go")
+    await wait(100)
 
 
 
@@ -137,7 +109,16 @@ def uci_runner():
     sim = os.getenv("SIM", "icarus")
     proj_path = Path(__file__).resolve().parent.parent
     sys.path.append(str(proj_path / "sim" / "model"))
-    sources = [proj_path / "hdl" / "1_types.sv", proj_path / "hdl" / "move_executor.sv", proj_path / "hdl" / "uci_handler.sv"]
+    sources = [proj_path / "hdl" / "1_types.sv", 
+               proj_path / "hdl" / "move_generator.sv", 
+               proj_path / "hdl" / "move_executor.sv", 
+               proj_path / "hdl" / "move_evaluator.sv", 
+               proj_path / "hdl" / "stream_sorter.sv", 
+               proj_path / "hdl" / "synchronizer.sv", 
+               proj_path / "hdl" / "xilinx_true_dual_port_read_first_1_clock_ram.v", 
+               proj_path / "hdl" / "engine_coordinator_sim.sv", 
+               proj_path / "hdl" / "uci_handler.sv", 
+               proj_path / "hdl" / "Z_top_level_test.sv"]
     # sources += [proj_path / "hdl" / "bto7s.sv"] #uncomment this if you make bto7s module its own file
     build_test_args = ["-Wall"]
     parameters = {} #setting parameter to a short amount (for testing)
@@ -146,7 +127,7 @@ def uci_runner():
     runner.build(
         sources=sources,
         includes=[proj_path / "hdl"],
-        hdl_toplevel="uci_handler",
+        hdl_toplevel="top_level_test",
         always=True,
         build_args=build_test_args,
         parameters=parameters,
@@ -155,8 +136,8 @@ def uci_runner():
     )
     run_test_args = []
     runner.test(
-        hdl_toplevel="uci_handler",
-        test_module="test_uci",
+        hdl_toplevel="top_level_test",
+        test_module="test_move_gen",
         test_args=run_test_args,
         waves=True
     )
