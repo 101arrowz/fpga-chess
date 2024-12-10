@@ -20,7 +20,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
 );
     localparam MAX_MOVES = 63;
     // unfortunately, this seems to perform worse with 2+ sorters; stick to 1 for now
-    localparam NUM_SORTERS = 2;
+    localparam NUM_SORTERS = 1;
 
     typedef logic [$clog2(MAX_MOVES) - 1:0] move_idx_t;
 

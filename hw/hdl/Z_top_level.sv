@@ -80,6 +80,7 @@ module top_level
     always_ff @(posedge clk_game) begin
       if (sys_rst) begin
         did_go <= 0;
+        coord_time <= 0;
       end else begin
         did_go <= did_go | go;
         if (go) begin
