@@ -1,14 +1,7 @@
-`include "1_types.sv"
 `timescale 1ns / 1ps
 `default_nettype none
 
-typedef enum {READY, DEBUG, 
-POSITION_BOARD_TYPE, POSITION_NEXT, POSITION_MOVES, 
-GO_PARAM,
-GO_PARSEINT,
-
-TRASH} uci_state;
-typedef enum {TIME, INC} go_state;
+typedef enum {READY, DEBUG, POSITION_BOARD_TYPE, POSITION_NEXT, POSITION_MOVES, TRASH} uci_state;
 typedef enum {READY_OUT, INFO, BEST_MOVE} uci_output_state;
 
 module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to support full response from UCI command
@@ -20,7 +13,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
     input wire char_in_valid,
     output logic   char_in_ready,
 
-    input wire[(INFO_LEN-1):0][7:0] info_in,
+    input wire[7:0][(INFO_LEN-1):0] info_in,
     input wire info_in_valid,
     output logic info_in_ready,
     
@@ -32,8 +25,6 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
     output logic board_out_valid,
 
     output logic go,
-    output logic[31:0] go_time,
-    output logic[31:0] go_inc,
     output logic in_debug,
 
     output logic[7:0]   char_out,
@@ -41,8 +32,6 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
     output logic char_out_valid
     );
     localparam new_line = 8'b0000_1010;
-    localparam default_time = 32'hFFFF_FFFF;
-    localparam default_inc = 32'hFFFF_FFFF;
     localparam board_t start_board = {
         //Pieces
         64'h00ff00000000ff00, //Pawn
@@ -58,7 +47,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
         4'hf, //castle
         15'h0000, //ply
         7'h00 //ply50
-    };
+        };
     uci_state current_state = READY;
     uci_output_state current_output_state = READY_OUT;
     logic in_debug_reg = 0;
@@ -67,13 +56,12 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
     logic[16:0][7:0] charbuff_new=0;
     logic[(INFO_LEN+4):0][7:0] info_in_buff=0;
     board_t temp_board = start_board;
-    go_state cur_go;
-    logic go_hit_int;
 
     move_t exec_move_in;
     logic exec_valid_in;
     logic uci_requested=0;
     logic output_board=0;
+    logic will_output_board=0;
     move_executor executor(.clk_in(clk_in), .rst_in(rst_in), .board_in(temp_board), .move_in(exec_move_in), .valid_in(exec_valid_in));
 
     always_comb begin
@@ -93,8 +81,8 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
         char_in_ready=1;
     end
     always_ff@(posedge clk_in) begin
-        move_t cur_move;
-        logic[7:0] best_move_append=0;
+        automatic move_t cur_move;
+        automatic logic[7:0] best_move_append=0;
 
         exec_valid_in<=0;
         char_out_valid<=0;
@@ -116,21 +104,21 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
             charbuff<=charbuff_new;
             case (current_state)
                 READY: begin
-                    if(charbuff_new[7:0]=="position") begin
+                    if(charbuff_new=="position") begin
                         current_state<=POSITION_BOARD_TYPE;
                         charbuff<=0;
-                    end else if(charbuff_new[4:0]=="debug") begin
+                    end else if(charbuff_new=="debug") begin
                         current_state<=DEBUG;
                         charbuff<=0;
-                    end else if(charbuff_new[1:0]=="go") begin
-                        current_state<=GO_PARAM;
-                        go_time<=default_time;
-                        go_inc<=default_inc;
+                    end else if(charbuff_new=="go") begin
+                        current_state<=TRASH;
                         charbuff<=0;
-                    end else if(charbuff_new[4:0]=="move ") begin
+                        go<=1;
+                    end else if(charbuff_new=="move ") begin
                         current_state<=POSITION_MOVES;
+                        will_output_board<=0;
                         charbuff<=0;
-                    end else if(charbuff_new[2:0]=="uci") begin
+                    end else if(charbuff_new=="uci") begin
                         current_state<=TRASH;
                         charbuff<=0;
                         uci_requested<=1;
@@ -140,11 +128,11 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                     end
                 end
                 DEBUG: begin
-                    if(charbuff_new[2:0]==" on") begin
+                    if(charbuff_new==" on") begin
                         current_state<=TRASH;
                         charbuff<=0;
                         in_debug_reg<=1;
-                    end else if(charbuff_new[3:0]==" off") begin
+                    end else if(charbuff_new==" off") begin
                         current_state<=TRASH;
                         charbuff<=0;
                         in_debug_reg<=0;
@@ -154,7 +142,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                     end
                 end
                 POSITION_BOARD_TYPE: begin
-                    if(charbuff_new[8:0]==" startpos") begin
+                    if(charbuff_new==" startpos") begin
                         current_state<=POSITION_NEXT;
                         charbuff<=0;
                         temp_board<=start_board;
@@ -164,8 +152,9 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                     end
                 end
                 POSITION_NEXT: begin
-                    if(charbuff_new[6:0]==" moves ") begin
+                    if(charbuff_new==" moves ") begin
                         current_state<=POSITION_MOVES;
+                        will_output_board<=0;
                         charbuff<=0;
                     end else if(charbuff_new[0]==new_line) begin
                         current_state<=READY;
@@ -176,87 +165,48 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                 end
                 POSITION_MOVES: begin
                     if((charbuff_new[0]==" ")||(charbuff_new[0]==new_line)) begin
-                        if(charbuff_new[5]==0) begin
-                            cur_move.src.fil = charbuff_new[4]-"a";
-                            cur_move.src.rnk = charbuff_new[3]-"1";
-                            cur_move.dst.fil = charbuff_new[2]-"a"; 
-                            cur_move.dst.rnk = charbuff_new[1]-"1";
-                            cur_move.special=SPECIAL_UNKNOWN;
-                        end else if(charbuff_new[6]==0) begin
-                            cur_move.src.fil = charbuff_new[5]-"a";
-                            cur_move.src.rnk = charbuff_new[4]-"1";
-                            cur_move.dst.fil = charbuff_new[3]-"a"; 
-                            cur_move.dst.rnk = charbuff_new[2]-"1";
-                            case (charbuff_new[1])
-                                "n": cur_move.special=SPECIAL_PROMOTE_KNIGHT;
-                                "b": cur_move.special=SPECIAL_PROMOTE_BISHOP;
-                                "r": cur_move.special=SPECIAL_PROMOTE_ROOK;
-                                "q": cur_move.special=SPECIAL_PROMOTE_QUEEN;
-                                default: cur_move.special=SPECIAL_NONE;
-                            endcase
-                        end
-                        if((charbuff_new[5]==0)||(charbuff_new[6]==0)) begin
-                            //$display("(%d, %d)->(%d, %d), %d", cur_move.src.fil, cur_move.src.rnk, cur_move.dst.fil, cur_move.dst.rnk, cur_move.special);
-                            charbuff<=0;
-                            exec_valid_in<=1;
-                            exec_move_in<=cur_move;
-                        end
-                        if(charbuff_new[0]==new_line) begin
-                            current_state<=READY;
-                            charbuff<=0;
-                            output_board<=(charbuff_new[5]==0)||(charbuff_new[6]==0);
+                        if(charbuff_new[1]==0) begin
+                            if(charbuff_new[0]==new_line) begin
+                                current_state<=READY;
+                                output_board<=will_output_board;
+                                charbuff<=0;
+                            end else begin
+                                charbuff<= charbuff;
+                            end
+                        end else begin
+                            if(charbuff_new[5]==0) begin
+                                cur_move.src.col = charbuff_new[4]-"a";
+                                cur_move.src.row = charbuff_new[3]-"1";
+                                cur_move.dst.col = charbuff_new[2]-"a"; 
+                                cur_move.dst.row = charbuff_new[1]-"1";
+                                cur_move.special=SPECIAL_UNKNOWN;
+                            end else if(charbuff_new[6]==0) begin
+                                cur_move.src.col = charbuff_new[5]-"a";
+                                cur_move.src.row = charbuff_new[4]-"1";
+                                cur_move.dst.col = charbuff_new[3]-"a"; 
+                                cur_move.dst.row = charbuff_new[2]-"1";
+                                case (charbuff_new[1])
+                                    "n": cur_move.special=SPECIAL_PROMOTE_KNIGHT;
+                                    "b": cur_move.special=SPECIAL_PROMOTE_BISHOP;
+                                    "r": cur_move.special=SPECIAL_PROMOTE_ROOK;
+                                    "q": cur_move.special=SPECIAL_PROMOTE_QUEEN;
+                                    default: cur_move.special=SPECIAL_NONE;
+                                endcase
+                            end
+                            if((charbuff_new[5]==0)||(charbuff_new[6]==0)) begin
+                                //$display("(%d, %d)->(%d, %d), %d", cur_move.src.col, cur_move.src.row, cur_move.dst.col, cur_move.dst.row, cur_move.special);
+                                charbuff<=0;
+                                exec_valid_in<=1;
+                                exec_move_in<=cur_move;
+                                will_output_board<=1;
+                            end
+                            if(charbuff_new[0]==new_line) begin
+                                current_state<=READY;
+                                charbuff<=0;
+                                output_board<=(charbuff_new[5]==0)||(charbuff_new[6]==0);
+                            end
                         end
                     end 
-                end
-                GO_PARAM:  begin
-                    if((charbuff_new[4:0]=="wtime")&&(~board_out.ply[0])) begin
-                        current_state<=GO_PARSEINT;
-                        cur_go<=TIME;
-                        go_time<=0;
-                        go_hit_int<=0;
-                        charbuff<=0;
-                    end else if((charbuff_new[4:0]=="btime")&&(board_out.ply[0])) begin
-                        current_state<=GO_PARSEINT;
-                        cur_go<=TIME;
-                        go_time<=0;
-                        go_hit_int<=0;
-                        charbuff<=0;
-                    end else if((charbuff_new[3:0]=="winc")&&(~board_out.ply[0])) begin
-                        current_state<=GO_PARSEINT;
-                        cur_go<=INC;
-                        go_inc<=0;
-                        go_hit_int<=0;
-                        charbuff<=0;
-                    end else if((charbuff_new[3:0]=="binc")&&(board_out.ply[0])) begin
-                        current_state<=GO_PARSEINT;
-                        cur_go<=INC;
-                        go_inc<=0;
-                        go_hit_int<=0;
-                        charbuff<=0;
-                    end else if(charbuff_new[0]==new_line) begin
-                        current_state<=READY;
-                        charbuff<=0;
-                        go<=1;
-                    end
-                end
-                GO_PARSEINT: begin
-                    logic[31:0] new_int;
-                    new_int=(((cur_go==TIME) ? go_time : go_inc)*10)+(charbuff_new[0]-"0");
-                    if((charbuff_new[0]>="0")&&(charbuff_new[0]<="9")) begin
-                        case (cur_go)
-                            TIME: go_time<=new_int;
-                            INC: go_inc<=new_int;
-                        endcase
-                        go_hit_int<=1;
-                    end else if(((charbuff_new[0]==" ")&&go_hit_int)||(charbuff_new[0]!=" ")) begin
-                        if(charbuff_new[0]!=" ") begin
-                            current_state<=READY;
-                            go<=1;
-                        end else begin
-                            current_state<=GO_PARAM;
-                        end
-                        charbuff<=0;
-                    end
                 end
                 TRASH: begin
                     if(charbuff_new[0]==new_line) begin
@@ -272,7 +222,7 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                 if((info_in_buff==0)&&uci_requested) begin
                     current_output_state<=INFO;
                     //I would love to just have a reverse function to make this readable. But IVerilog won't stop complaining, so we need to do this instead.
-                    info_in_buff<={"koicu", new_line, "caasI nalyD ,tterraB nujrA rohtua di", new_line, "reviR eman di"};
+                    info_in_buff<={"koicu", new_line, "tterraB nujrA ,caasI nalyD rohtua di", new_line, "reviR eman di"};
                     uci_requested<=0;
                 end else if((!(best_move_in_valid&&best_move_in_ready))&&(info_in_buff!=0)) begin
                     current_output_state<=INFO;
@@ -289,14 +239,17 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                         SPECIAL_PROMOTE_QUEEN: best_move_append="q";
                         default: best_move_append=0;
                     endcase
-                    best_move_buff<={best_move_append, 8'("1"+best_move_in.dst.rnk), 8'("a"+best_move_in.dst.fil), 8'("1"+best_move_in.src.rnk), 8'("a"+best_move_in.src.fil), " evomtseb"};
-                    //exec_valid_in<=1;
-                    //exec_move_in<=best_move_in;
+                    best_move_buff<={best_move_append, ("1"+best_move_in.dst.row), ("a"+best_move_in.dst.col), ("1"+best_move_in.src.row), ("a"+best_move_in.src.col), " evomtseb"};
+                    exec_valid_in<=1;
+                    exec_move_in<=best_move_in;
                 end
                 
             end
             INFO: begin
-                char_out_valid<=1;
+                char_out<=info_in_buff[0];
+                if(info_in_buff[0]==0) begin
+                    char_out<=new_line;
+                end
                 if(char_out_ready&&char_out_valid) begin
                     integer i;
                     info_in_buff[INFO_LEN+4]<=0;
@@ -306,30 +259,27 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
                     if(info_in_buff[0]==0) begin
                         current_output_state<=READY_OUT;
                         info_in_buff<=0;
-                        char_out_valid <= 0;
                     end
-                    char_out<=info_in_buff[1]==0 ? new_line : info_in_buff[1];
-                end else begin
-                    char_out<=info_in_buff[0]==0 ? new_line : info_in_buff[0];
                 end
+                char_out_valid<=1;
             end
             BEST_MOVE: begin
-                char_out_valid<=1;
+                char_out<=best_move_buff[0];
+                if(best_move_buff[0]==0) begin
+                    char_out<=new_line;
+                end
                 if(char_out_ready&&char_out_valid) begin
                     integer i;
                     if(best_move_buff[0]==0) begin
                         current_output_state<=READY_OUT;
                         best_move_buff<=0;
-                        char_out_valid <= 0;
                     end
                     best_move_buff[13]<=0;
                     for(i=0; i < 13; i++) begin
                         best_move_buff[i]<=best_move_buff[i+1];
                     end
-                    char_out<=best_move_buff[1]==0 ? new_line : best_move_buff[1];
-                end else begin
-                    char_out<=best_move_buff[0]==0 ? new_line : best_move_buff[0];
                 end
+                char_out_valid<=1;
             end
         endcase
 
@@ -345,9 +295,6 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
             board_out_valid<=0;
             uci_requested<=0;
             output_board<=0;
-
-            go_time<=default_time;
-            go_inc<=default_inc;
         end
     end
 endmodule
