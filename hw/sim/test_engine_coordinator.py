@@ -28,13 +28,13 @@ async def test_a(dut):
     dut.depth_in.value = 2
 
     occupancies = {
-        'knight': 0x0000240000040040,
-        'bishop': 0x2400000000000024,
+        'knight': 0x0000040000200002,
+        'bishop': 0x0400000020000020,
         'rook': 0x8100000000000081,
-        'queen': 0x0800000040000000,
-        'pawn': 0x00ef00101000ef00,
+        'queen': 0x0000200000000008,
+        'pawn': 0x00c7100888002700,
 
-        'white': 0x000000005004eff5
+        'white': 0x00001000882027bb
     }
 
     # occupancies['queen'] |= 1 << 36
@@ -46,11 +46,12 @@ async def test_a(dut):
     en_passant = 0x0
     castle = 0xf
 
-    ply = 6
-    ply50 = 3
+    ply = 14
+    ply50 = 0
 
     board_init = (occupancies['pawn'] << 364) | (occupancies['queen'] << 300) | (occupancies['rook'] << 236) | (occupancies['bishop'] << 172) | (occupancies['knight'] << 108) | \
         (occupancies['white'] << 44) | (king_b << 38) | (king_w << 32) | (checkmate << 30) | (en_passant << 26) | (castle << 22) | (ply << 7) | (ply50)
+    print(board_init)
 
     dut.board_in.value = board_init
     dut.board_valid_in.value = 1

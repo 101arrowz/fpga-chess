@@ -19,7 +19,8 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
     output logic info_valid_out
 );
     localparam MAX_MOVES = 63;
-    localparam NUM_SORTERS = 1;
+    // unfortunately, this seems to perform worse with 2+ sorters; stick to 1 for now
+    localparam NUM_SORTERS = 2;
 
     typedef logic [$clog2(MAX_MOVES) - 1:0] move_idx_t;
 
@@ -201,6 +202,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
         .clk_in(clk_in),
         .rst_in(rst_in),
         .board_in(movegen_board),
+        .captures_only_in(cur_depth >= target_depth && !cur_check),
         .valid_in(start_movegen),
         .move_out(movegen_pipe[1]),
         .valid_out(movegen_valid_pipe[1]),
@@ -440,7 +442,6 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
                                 // NOTE: should always be true on the first cycle but doesn't hurt to check
                                 start_movegen <= 1;
                                 cur_sorter <= next_free_sorter;
-                                sort_depth[next_free_sorter - 1] <= cur_depth;
                                 start_gen_bit <= ~start_gen_bit;
                                 cur_state <= EC_GENERATING;
                             end
@@ -449,7 +450,6 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
                         // NOTE: should always be true on the first cycle but doesn't hurt to check
                         start_movegen <= 1;
                         cur_sorter <= next_free_sorter;
-                        sort_depth[next_free_sorter - 1] <= cur_depth;
                         start_gen_bit <= ~start_gen_bit;
                         cur_state <= EC_GENERATING;
                     end
@@ -469,6 +469,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
                 end
                 EC_WRITEBACK: begin
                     finish_latency <= 0;
+                    sort_depth[prev_sorter] <= cur_depth;
                     if (sort_len[prev_sorter] == 0) begin
                         // otherwise checkmate/quiescent search and default to -32760/static_eval
                         if (cur_depth < target_depth && !cur_check) begin
