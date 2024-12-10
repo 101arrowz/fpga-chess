@@ -16,7 +16,7 @@ module stream_sorter #(parameter MAX_LEN = 32, parameter KEY_BITS=8, parameter V
     output logic[($clog2(MAX_LEN)-1):0] array_len_out//Will desync if array overflows (so don't do that)
     );
     logic[(MAX_LEN-1):0][(VALUE_BITS-1):0] array_out_reg=0; 
-    logic[(MAX_LEN-1):0][(VALUE_BITS-1):0] keys_out_reg=0; 
+    logic[(MAX_LEN-1):0][(KEY_BITS-1):0] keys_out_reg=0; 
     logic[($clog2(MAX_LEN + 1)-1):0] array_len_out_reg=0;
     logic[MAX_LEN:0] carry; 
 

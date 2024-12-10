@@ -69,6 +69,12 @@ module move_executor
          pieces2[i] = pieces[i]&(~move_mask);
          ret_board.pieces=pieces2;
       end
+      /*if (valid_in && captured_piece != 0 && move != 0) begin
+         $display("hi");
+         $display(board_in);
+         $display(move);
+         $display(captured_piece);
+      end*/
       king_captured={move.dst==board.kings[1], move.dst==board.kings[0]};
 
       captured = (|captured_piece)|king_captured[0]|king_captured[1];

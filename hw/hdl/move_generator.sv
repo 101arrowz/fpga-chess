@@ -454,7 +454,7 @@ module move_generator(
             logic has_rcap;
 
             local_occ = is_black ? bs64(occupied) >> {~pawn_gen[5:3], pawn_gen[2:0]} : occupied >> pawn_gen;
-            local_opp = is_black ? bs64(occupied & ~board.pieces_w) >> {~pawn_gen[5:3], pawn_gen[2:0]} : (occupied & board.pieces_w) >> pawn_gen;
+            local_opp = is_black ? bs64(occupied & board.pieces_w) >> {~pawn_gen[5:3], pawn_gen[2:0]} : (occupied & ~board.pieces_w) >> pawn_gen;
 
             fw_inc = is_black ? 6'b111000 : 6'b001000;
             is_start_rank = pawn_gen[5:3] == (is_black ? 3'b110 : 3'b001);
@@ -577,6 +577,7 @@ module move_generator(
                     move_out <= king_move;
                     valid_out <= 1'b1;
                     king_pl_dst <= king_pl_dst & (king_pl_dst - 64'b1);
+                    king_castle_state <= king_castle_state_next;
                 end
 
                 if (knight_new) begin
@@ -590,7 +591,7 @@ module move_generator(
                         knight_pl_dst <= knight_pl_dst_cur & (knight_pl_dst_cur - 64'b1);
                     end
 
-                    if (knight_go_next) begin
+                    if (~(knight_move_valid & skip_knight) & knight_go_next) begin
                         knight_new <= 1;
                         knight_avail <= knight_avail_cur & (knight_avail_cur - 64'b1);
                     end
@@ -607,7 +608,7 @@ module move_generator(
                         bishop_pl_dst <= bishop_pl_dst_cur & (bishop_pl_dst_cur - 64'b1);
                     end
 
-                    if (bishop_go_next) begin
+                    if (~(bishop_move_valid & skip_bishop) & bishop_go_next) begin
                         bishop_new <= 1;
                         bishop_avail <= bishop_avail_cur & (bishop_avail_cur - 64'b1);
                     end
@@ -624,7 +625,7 @@ module move_generator(
                         rook_pl_dst <= rook_pl_dst_cur & (rook_pl_dst_cur - 64'b1);
                     end
 
-                    if (rook_go_next) begin
+                    if (~(rook_move_valid & skip_rook) & rook_go_next) begin
                         rook_new <= 1;
                         rook_avail <= rook_avail_cur & (rook_avail_cur - 64'b1);
                     end
@@ -641,7 +642,7 @@ module move_generator(
                         pawn_move_state <= pawn_move_state_next;
                     end
 
-                    if (pawn_go_next) begin
+                    if (~(pawn_move_valid & skip_pawn) &  & pawn_go_next) begin
                         pawn_new <= 1;
                         pawn_avail <= pawn_avail_cur & (pawn_avail_cur - 64'b1);
                     end

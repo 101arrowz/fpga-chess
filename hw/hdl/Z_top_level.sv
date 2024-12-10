@@ -80,6 +80,7 @@ module top_level
 
     assign led[0] = btnc;
     assign led[1] = ec_ready;
+    assign led[2] = did_go;
 
     engine_coordinator ec(
       .clk_in(clk_40mhz),

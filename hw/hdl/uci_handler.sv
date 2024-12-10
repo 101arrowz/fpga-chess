@@ -81,8 +81,8 @@ module uci_handler #(parameter INFO_LEN = 52)//INFO_LEN must be atleast 52 to su
         char_in_ready=1;
     end
     always_ff@(posedge clk_in) begin
-        automatic move_t cur_move;
-        automatic logic[7:0] best_move_append=0;
+        move_t cur_move;
+        logic[7:0] best_move_append=0;
 
         exec_valid_in<=0;
         char_out_valid<=0;
