@@ -12,7 +12,7 @@ from time import sleep
 
 # set according to your system!
 # CHANGE ME
-SERIAL_PORTNAME = "/dev/cu.usbserial-210292AE394A1"
+SERIAL_PORTNAME = "/dev/cu.usbserial-2102926962171"
 BAUD = 115200
 ser = serial.Serial(SERIAL_PORTNAME,BAUD)
 ser.timeout = 0.01

@@ -26,7 +26,7 @@ module stream_sorter #(parameter MAX_LEN = 32, parameter KEY_BITS=8, parameter V
     always_comb begin
         carry[MAX_LEN]=1;
         for(integer i=0; i < MAX_LEN; i++) begin
-            carry[i]=keys_out_reg[i]<key_in;
+            carry[i]=keys_out_reg[i]<=key_in;
         end
     end
     always_ff @(posedge clk_in) begin
