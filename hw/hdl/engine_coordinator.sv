@@ -36,6 +36,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
     move_t old_best;
 
     move_t prefetch_move;
+    logic [$clog2((1 + 2) + 1):0] finish_latency;
 
     move_t cur_move0;
     eval_t move0_score;
@@ -57,7 +58,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
         .rst_in(rst_in || (cur_state == EC_FINISH && cur_depth == 0)),
         .value_in(cur_move0),
         .key_in(move0_key),
-        .valid_in(cur_depth == 1 && cur_state == EC_FINISH),
+        .valid_in(cur_depth == 1 && cur_state == EC_FINISH && finish_latency == 0),
         .dequeue_in(),
         .array_out(move0_values),
         .keys_out(move0_keys),
@@ -344,7 +345,8 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
     logic last_move_sorted;
 
     // movegen -> [movegen sync -> move exec -> move exec sync -> move eval -> move eval sync] -> sorter
-    localparam GEN_TO_SORT_LATENCY = MOVEGEN_SYNC + 1 + MOVE_EXEC_SYNC + 2 + MOVE_EVAL_SYNC;
+    // need one extra cycle to let last sort input be sorted
+    localparam GEN_TO_SORT_LATENCY = MOVEGEN_SYNC + 1 + MOVE_EXEC_SYNC + 2 + MOVE_EVAL_SYNC + 1;
     synchronizer#(.COUNT(GEN_TO_SORT_LATENCY), .WIDTH(1)) gen_sort_sync(
         .clk_in(clk_in),
         .rst_in(rst_in),
@@ -386,8 +388,6 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
 
     eval_t new_alpha;
     assign new_alpha = $signed(child_eval) > $signed(pos_stack_alpha[cur_depth - 1]) ? child_eval : $signed(pos_stack_alpha[cur_depth - 1]);
-
-    logic [$clog2((1 + 2) + 1):0] finish_latency;
 
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
@@ -433,7 +433,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
                                 pos_stack_alpha[cur_depth] <= stand_pat;
                             end
 
-                            if ($signed(stand_pat) > $signed(pos_stack_beta[cur_depth]) || cur_depth >= MAX_DEPTH || cur_depth >= target_depth + MAX_QUIESCE) begin
+                            if ($signed(stand_pat) > $signed(pos_stack_beta[cur_depth]) || cur_depth >= MAX_DEPTH - 1 || cur_depth >= target_depth + MAX_QUIESCE) begin
                                 finish_latency <= 0;
                                 cur_state <= EC_FINISH;
                             end else if (movegen_ready && next_free_sorter != 0) begin
@@ -508,7 +508,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
                             cur_state <= EC_READY;
                         end
                     end else begin
-                        if (cur_depth == 1) begin
+                        if (cur_depth == 1 && finish_latency == 0) begin
                             cur_move0 <= prefetch_move;
                         end
 
@@ -528,6 +528,8 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
                                 pos_stack_move_idx[cur_depth - 1] <= pos_stack_move_idx[cur_depth - 1] + 1;
                                 pos_stack_board[cur_depth] <= next_pos;
                                 // alpha remains the same for child because beta doesn't change in parent
+                                pos_stack_score[cur_depth] <= -16'sd32760;
+                                pos_stack_alpha[cur_depth] <= -$signed(pos_stack_beta[cur_depth - 1]);
                                 pos_stack_beta[cur_depth] <= -$signed(new_alpha);
                                 pos_stack_move_idx[cur_depth] <= 1;
 

@@ -474,9 +474,10 @@ module move_generator(
                 pawn_move.src = pawn_gen;
                 pawn_move.dst = pawn_dst;
                 pawn_move.special = is_promote_rank ? move_special_t'(`SPECIAL_PROMOTE + pawn_move_state_cur[2:0]) : SPECIAL_NONE;
-                pawn_move_state_next = is_promote_rank ? pawn_move_state_cur + 4'b1 : 4'b1101;
+                pawn_move_state_next = is_promote_rank ? pawn_move_state_cur + 4'b1 : (has_fw2 ? 4'b1101 : 4'b0100);
                 pawn_go_next = ~has_fw2 & ~has_lcap & ~has_rcap & (~is_promote_rank || pawn_move_state_cur == 4'b0011);
             end else if (pawn_move_state_cur == 4'b1101 && has_fw2) begin
+                // technically has_fw2 should be guaranteed here but just to be safe, check anyway
                 logic [5:0] pawn_dst;
                 pawn_dst = pawn_gen + (fw_inc << 1);
 

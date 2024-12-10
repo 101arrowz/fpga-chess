@@ -25,16 +25,16 @@ async def test_a(dut):
     dut.go_in.value = 0
     await ClockCycles(dut.clk_in, 5)
     dut.rst_in.value = 0
-    dut.depth_in.value = 3
+    dut.depth_in.value = 2
 
     occupancies = {
-        'knight': 0x4200000000000042,
+        'knight': 0x0000240000040040,
         'bishop': 0x2400000000000024,
         'rook': 0x8100000000000081,
-        'queen': 0x0800000000000008,
-        'pawn': 0x00ff00000000ff00,
+        'queen': 0x0800000040000000,
+        'pawn': 0x00ef00101000ef00,
 
-        'white': 0x000000000000ffff
+        'white': 0x000000005004eff5
     }
 
     # occupancies['queen'] |= 1 << 36
@@ -46,8 +46,8 @@ async def test_a(dut):
     en_passant = 0x0
     castle = 0xf
 
-    ply = 0
-    ply50 = 0
+    ply = 6
+    ply50 = 3
 
     board_init = (occupancies['pawn'] << 364) | (occupancies['queen'] << 300) | (occupancies['rook'] << 236) | (occupancies['bishop'] << 172) | (occupancies['knight'] << 108) | \
         (occupancies['white'] << 44) | (king_b << 38) | (king_w << 32) | (checkmate << 30) | (en_passant << 26) | (castle << 22) | (ply << 7) | (ply50)
@@ -79,7 +79,7 @@ def coord_runner():
         proj_path / "hdl" / "move_generator.sv",
         proj_path / "hdl" / "move_evaluator.sv",
         proj_path / "hdl" / "move_executor.sv",
-        proj_path.parent / "sim_replica" / "engine_coordinator_sim.sv"
+        proj_path / "hdl" / "engine_coordinator.sv"
     ]
     build_test_args = ["-Wall"]
     parameters = {'MAX_DEPTH': 4}
@@ -87,7 +87,7 @@ def coord_runner():
     runner = get_runner(sim)
     runner.build(
         sources=sources,
-        hdl_toplevel="engine_coordinator_sim",
+        hdl_toplevel="engine_coordinator",
         includes=[proj_path / "hdl"],
         always=True,
         build_args=build_test_args,
@@ -97,7 +97,7 @@ def coord_runner():
     )
     run_test_args = []
     runner.test(
-        hdl_toplevel="engine_coordinator_sim",
+        hdl_toplevel="engine_coordinator",
         test_module="test_engine_coordinator",
         test_args=run_test_args,
         waves=True
