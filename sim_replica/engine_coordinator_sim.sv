@@ -39,16 +39,24 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE =
 
     move_t cur_move0;
     eval_t move0_score;
+    logic [$bits(eval_t)-1:0] move0_key;
     assign move0_score = -$signed(pos_stack_score[1]);
+    assign move0_key = {~move0_score[$bits(eval_t) - 1], move0_score[$bits(eval_t) - 2:0]};
 
     logic [(MAX_MOVES-1):0][$bits(move_t)-1:0] move0_values;
     logic [(MAX_MOVES-1):0][$bits(eval_t)-1:0] move0_keys;
+
+    move_t cur_best;
+    eval_t cur_best_eval;
+
+    assign cur_best = move0_values[0];
+    assign cur_best_eval = {~move0_keys[0][$bits(eval_t) - 1], move0_keys[0][$bits(eval_t) - 2:0]};
 
     stream_sorter#(.MAX_LEN(MAX_MOVES), .KEY_BITS($bits(eval_t)), .VALUE_BITS($bits(move_t))) root_best(
         .clk_in(clk_in),
         .rst_in(rst_in || (cur_state == EC_FINISH && cur_depth == 0)),
         .value_in(cur_move0),
-        .key_in(move0_score),
+        .key_in(move0_key),
         .valid_in(cur_depth == 1 && cur_state == EC_FINISH),
         .dequeue_in(),
         .array_out(move0_values),
@@ -379,6 +387,8 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE =
     eval_t new_alpha;
     assign new_alpha = $signed(child_eval) > $signed(pos_stack_alpha[cur_depth - 1]) ? child_eval : $signed(pos_stack_alpha[cur_depth - 1]);
 
+    logic [$clog2((1 + 2) + 1):0] finish_latency;
+
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
             cur_depth <= 0;
@@ -423,11 +433,10 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE =
                                 pos_stack_alpha[cur_depth] <= stand_pat;
                             end
 
-                            if ($signed(stand_pat) > $signed(pos_stack_beta[cur_depth])) begin
+                            if ($signed(stand_pat) > $signed(pos_stack_beta[cur_depth]) || cur_depth >= MAX_DEPTH || cur_depth >= target_depth + MAX_QUIESCE) begin
+                                finish_latency <= 0;
                                 cur_state <= EC_FINISH;
-                            end
-
-                            if (movegen_ready && next_free_sorter != 0) begin
+                            end else if (movegen_ready && next_free_sorter != 0) begin
                                 // NOTE: should always be true on the first cycle but doesn't hurt to check
                                 start_movegen <= 1;
                                 cur_sorter <= next_free_sorter;
@@ -459,6 +468,7 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE =
                     end
                 end
                 EC_WRITEBACK: begin
+                    finish_latency <= 0;
                     if (sort_len[prev_sorter] == 0) begin
                         // otherwise checkmate/quiescent search and default to -32760/static_eval
                         if (cur_depth < target_depth && !cur_check) begin
@@ -467,7 +477,7 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE =
                         cur_state <= EC_FINISH;
                     end else begin
                         cur_depth <= cur_depth + 1;
-                        $display(sort_len[prev_sorter]);
+                        //$display(sort_len[prev_sorter]);
                         pos_stack_num_moves[cur_depth] <= sort_len[prev_sorter];
                         pos_stack_score[cur_depth + 1] <= next_pos.ply50 >= 7'd100 ? 16'sd0 : -16'sd32760;
                         pos_stack_alpha[cur_depth + 1] <= -$signed(pos_stack_beta[cur_depth]);
@@ -479,11 +489,11 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE =
                 end
                 EC_FINISH: begin
                     if (cur_depth == 0) begin
-                        old_best <= move0_values[0];
-                        $display("best move:");
-                        $display(move0_values[0]);
-                        $display("eval:");
-                        $display(move0_keys[0]);
+                        old_best <= cur_best;
+                        //$display("best move:");
+                        //$display(cur_best);
+                        //$display("eval:");
+                        //$display(cur_best_eval);
                         if (target_depth < depth_in) begin
                             // iterative deepening
                             target_depth <= target_depth + 1;
@@ -493,7 +503,7 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE =
                             pos_stack_move_idx[0] <= 1;
                             cur_state <= EC_NEXT;
                         end else begin
-                            bestmove_out <= move0_values[0];
+                            bestmove_out <= cur_best;
                             valid_out <= 1;
                             cur_state <= EC_READY;
                         end
@@ -509,15 +519,20 @@ module engine_coordinator_sim#(parameter MAX_DEPTH = 64, parameter MAX_QUIESCE =
                         end
 
                         if ($signed(child_eval) > $signed(pos_stack_beta[cur_depth - 1]) || pos_stack_move_idx[cur_depth - 1] >= pos_stack_num_moves[cur_depth - 1]) begin
+                            finish_latency <= 2 + 1;
                             cur_depth <= cur_depth - 1;
                         end else begin
-                            pos_stack_move_idx[cur_depth - 1] <= pos_stack_move_idx[cur_depth - 1] + 1;
-                            pos_stack_board[cur_depth] <= next_pos;
-                            // alpha remains the same for child because beta doesn't change in parent
-                            pos_stack_beta[cur_depth] <= -$signed(new_alpha);
-                            pos_stack_move_idx[cur_depth] <= 1;
+                            if (finish_latency != 0) begin
+                                finish_latency <= finish_latency - 1;
+                            end else begin
+                                pos_stack_move_idx[cur_depth - 1] <= pos_stack_move_idx[cur_depth - 1] + 1;
+                                pos_stack_board[cur_depth] <= next_pos;
+                                // alpha remains the same for child because beta doesn't change in parent
+                                pos_stack_beta[cur_depth] <= -$signed(new_alpha);
+                                pos_stack_move_idx[cur_depth] <= 1;
 
-                            cur_state <= EC_NEXT;
+                                cur_state <= EC_NEXT;
+                            end
                         end
                     end
                 end

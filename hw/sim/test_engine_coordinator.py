@@ -11,6 +11,11 @@ from cocotb.utils import get_sim_time as gst
 from cocotb.runner import get_runner
 import random
 
+def get_move(num):
+    sq = lambda v: chr((v & 7) + ord('a')) + chr(((v >> 3) & 7) + ord('1'))
+
+    return sq(num >> 9) + sq(num >> 3)
+
 @cocotb.test()
 async def test_a(dut):
     """cocotb test for seven segment controller"""
@@ -20,7 +25,7 @@ async def test_a(dut):
     dut.go_in.value = 0
     await ClockCycles(dut.clk_in, 5)
     dut.rst_in.value = 0
-    dut.depth_in.value = 1
+    dut.depth_in.value = 3
 
     occupancies = {
         'knight': 0x4200000000000042,
@@ -56,11 +61,11 @@ async def test_a(dut):
     await ClockCycles(dut.clk_in, 1)
     dut.go_in.value = 0
 
-    await ClockCycles(dut.clk_in, 1000)
+    # await ClockCycles(dut.clk_in, 10000)
 
-    # await RisingEdge(dut.valid_out)
-    # await ReadOnly()
-    # print(dut.bestmove_out.value)
+    await RisingEdge(dut.valid_out)
+    await ReadOnly()
+    print('bestmove:', get_move(dut.bestmove_out.value.integer))
 def coord_runner():
     hdl_toplevel_lang = os.getenv("HDL_TOPLEVEL_LANG", "verilog")
     sim = os.getenv("SIM", "icarus")
