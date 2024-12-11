@@ -176,6 +176,7 @@ module move_generator(
     input wire    clk_in,
     input wire    rst_in,
     input board_t board_in,
+    input wire    captures_only_in,
     input wire    valid_in,
     output move_t move_out,
     output logic  valid_out,
@@ -192,10 +193,13 @@ module move_generator(
     logic [63:0] occupied;
     logic [63:0] allies;
     logic [63:0] enemies;
+    logic [63:0] dest_mask;
+    logic caponly;
 
     logic [63:0] occupied_next;
     logic [63:0] allies_next;
     logic [63:0] enemies_next;
+    logic [63:0] dest_mask_next;
 
     logic is_black;
 
@@ -231,6 +235,7 @@ module move_generator(
 
         allies_next = occupied_next & ours;
         enemies_next = occupied_next & ~ours;
+        dest_mask_next = captures_only_in ? enemies_next : ~allies_next;
     end
 
     // king movegen
@@ -526,12 +531,14 @@ module move_generator(
         pawn_avail_cur != 0
     );
 
+    logic skip_king;
     logic skip_knight;
     logic skip_bishop;
     logic skip_rook;
     logic skip_pawn;
 
-    assign skip_knight = king_move_valid;
+    assign skip_king = 0;
+    assign skip_knight = skip_king | king_move_valid;
     assign skip_bishop = skip_knight | (~knight_new & knight_move_valid);
     assign skip_rook = skip_bishop | (~bishop_new & bishop_move_valid);
     assign skip_pawn = skip_rook | (~rook_new & rook_move_valid);
@@ -552,8 +559,10 @@ module move_generator(
                 occupied <= occupied_next;
                 allies <= allies_next;
                 enemies <= enemies_next;
+                dest_mask <= dest_mask_next;
+                caponly <= captures_only_in;
 
-                king_pl_dst <= king_all_dst & ~allies_next;
+                king_pl_dst <= king_all_dst & dest_mask_next;
                 knight_avail <= board.pieces[KNIGHT] & allies_next;
                 bishop_avail <= (board.pieces[BISHOP] | board.pieces[QUEEN]) & allies_next;
                 rook_avail <= (board.pieces[ROOK] | board.pieces[QUEEN]) & allies_next;
@@ -574,7 +583,7 @@ module move_generator(
                 rook_new <= 0;
                 pawn_new <= 0;
 
-                if (king_move_valid) begin
+                if (king_move_valid && ~skip_king) begin
                     move_out <= king_move;
                     valid_out <= 1'b1;
                     king_pl_dst <= king_pl_dst & (king_pl_dst - 64'b1);
@@ -582,7 +591,7 @@ module move_generator(
                 end
 
                 if (knight_new) begin
-                    knight_pl_dst <= knight_all_dst & ~allies;
+                    knight_pl_dst <= knight_all_dst & dest_mask;
                     knight_new <= 0;
                 end else begin
                     if (knight_move_valid & ~skip_knight) begin
@@ -599,7 +608,7 @@ module move_generator(
                 end
 
                 if (bishop_new) begin
-                    bishop_pl_dst <= bishop_all_dst & ~allies;
+                    bishop_pl_dst <= bishop_all_dst & dest_mask;
                     bishop_new <= 0;
                 end else begin
                     if (bishop_move_valid & ~skip_bishop) begin
@@ -616,7 +625,7 @@ module move_generator(
                 end
     
                 if (rook_new) begin
-                    rook_pl_dst <= rook_all_dst & ~allies;
+                    rook_pl_dst <= rook_all_dst & dest_mask;
                     rook_new <= 0;
                 end else begin
                     if (rook_move_valid & ~skip_rook) begin
@@ -633,7 +642,7 @@ module move_generator(
                 end
 
                 if (pawn_new) begin
-                    pawn_move_state <= 0;
+                    pawn_move_state <= caponly ? 4'b0100 : 4'b0000;
                     pawn_new <= 0;
                 end else begin
                     if (pawn_move_valid & ~skip_pawn) begin

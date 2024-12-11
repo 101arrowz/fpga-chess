@@ -184,6 +184,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
         .clk_in(clk_in),
         .rst_in(rst_in),
         .board_in(movegen_board),
+        .captures_only_in(cur_depth >= target_depth && !cur_check),
         .valid_in(start_movegen),
         .move_out(movegen_pipe[1]),
         .valid_out(movegen_valid_pipe[1]),
