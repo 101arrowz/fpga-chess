@@ -19,40 +19,54 @@ async def test_a(dut):
     dut.rst_in.value = 1
     await ClockCycles(dut.clk_in, 5)
     dut.rst_in.value = 0
-    arr=list(range(20))
-    random.shuffle(arr)
-    for i in arr:
-        dut.value_in=i
-        dut.key_in=i
-        dut.valid_in=1
-        await ClockCycles(dut.clk_in, 1)
-    dut.valid_in=0
-    await ClockCycles(dut.clk_in, 10)
-    b=[]
-    for i in range(dut.array_len_out.value):
-        b.append((dut.array_out.value>>(i*15))&(2**15-1))
-    print(arr)
-    print(b)
+    assert dut.ready_out
 
+    occupancies = {
+        'knight': 0x4200000000000042,
+        'bishop': 0x2400000000000024,
+        'rook': 0x8100000000000081,
+        'queen': 0x0800000000000008,
+        'pawn': 0x00ff00000000ff00,
 
+        'white': 0x000000000000ffff
+    }
 
+    occupancies['queen'] |= 1 << 36
+    occupancies['white'] |= 1 << 36
 
-def sorter_runner():
-    """Simulate the counter using the Python runner."""
+    king_w = 0x04
+    king_b = 0x3c
+    checkmate = 0x0
+    en_passant = 0x0
+    castle = 0xf
+
+    ply = 1
+    ply50 = 0
+
+    board_init = (occupancies['pawn'] << 364) | (occupancies['queen'] << 300) | (occupancies['rook'] << 236) | (occupancies['bishop'] << 172) | (occupancies['knight'] << 108) | \
+        (occupancies['white'] << 44) | (king_b << 38) | (king_w << 32) | (checkmate << 30) | (en_passant << 26) | (castle << 22) | (ply << 7) | (ply50)
+
+    dut.board_in.value = board_init
+    dut.valid_in.value = 1
+    await ClockCycles(dut.clk_in, 1)
+    dut.valid_in.value = 0
+
+    await ClockCycles(dut.clk_in, 70)
+
+def movegen_runner():
     hdl_toplevel_lang = os.getenv("HDL_TOPLEVEL_LANG", "verilog")
     sim = os.getenv("SIM", "icarus")
     proj_path = Path(__file__).resolve().parent.parent
     sys.path.append(str(proj_path / "sim" / "model"))
-    sources = [proj_path / "hdl" / "stream_sorter.sv"]
-    # sources += [proj_path / "hdl" / "bto7s.sv"] #uncomment this if you make bto7s module its own file
+    sources = [proj_path / "hdl" / "move_generator.sv"]
     build_test_args = ["-Wall"]
-    parameters = {} #setting parameter to a short amount (for testing)
+    parameters = {}
     sys.path.append(str(proj_path / "sim"))
     runner = get_runner(sim)
     runner.build(
         sources=sources,
+        hdl_toplevel="move_generator",
         includes=[proj_path / "hdl"],
-        hdl_toplevel="stream_sorter",
         always=True,
         build_args=build_test_args,
         parameters=parameters,
@@ -61,11 +75,11 @@ def sorter_runner():
     )
     run_test_args = []
     runner.test(
-        hdl_toplevel="stream_sorter",
-        test_module="test_stream_sorter",
+        hdl_toplevel="move_generator",
+        test_module="test_move_generator",
         test_args=run_test_args,
         waves=True
     )
 
 if __name__ == "__main__":
-    sorter_runner()
+    movegen_runner()

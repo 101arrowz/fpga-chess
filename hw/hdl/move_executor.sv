@@ -1,3 +1,5 @@
+`include "1_types.sv"
+
 `timescale 1ns / 1ps
 `default_nettype none
 
@@ -12,7 +14,6 @@ module move_executor
    output logic  captured_out,
    output logic  valid_out
    );
-   localparam int NB_PIECES = 5;
    function logic[63:0] coord_to_mask(coord_t coord);
       integer i;
       for(i=0; i<64; i++) begin
@@ -36,8 +37,9 @@ module move_executor
    assign move = move_in;
    assign board = board_in;
    always_ff@(posedge clk_in) begin
-      logic[(NB_PIECES-1):0] captured_piece;
-      logic[(NB_PIECES-1):0] is_piece;
+      logic[(`NB_PIECES-1):0] captured_piece;
+      logic[(`NB_PIECES-1):0] is_piece;
+      logic[(`NB_PIECES-1):0] is_piece_dst;
       logic captured;
       logic[1:0] king_captured;
       logic [63:0] move_mask;
@@ -50,22 +52,29 @@ module move_executor
       
       src_mask=coord_to_mask(move.src);
       move_mask=coord_to_mask(move.dst);
-      for(i=0; i<NB_PIECES; i=i+1) begin
-         logic[63:0] pieces;//doing this because of iVerilog
+      for(i=0; i<`NB_PIECES; i=i+1) begin
+         logic[4:0][63:0] pieces;//doing this because of iVerilog
          pieces = board.pieces;
          is_piece[i]= (pieces[i]&src_mask)!=0;
       end
+      is_piece_dst=is_piece;
       ret_board.pieces_w = is_b ? (board.pieces_w & ~move_mask) : (board.pieces_w | move_mask);
       //
-      for(i=0; i<NB_PIECES; i=i+1) begin
-         logic[63:0] pieces;//doing this because of iVerilog
-         logic[63:0] pieces2;
+      for(i=0; i<`NB_PIECES; i=i+1) begin
+         logic[4:0][63:0] pieces;//doing this because of iVerilog
+         logic[4:0][63:0] pieces2;
          pieces = board.pieces;
          pieces2 = ret_board.pieces;
          captured_piece[i]= (pieces[i]&move_mask)!=0;
          pieces2[i] = pieces[i]&(~move_mask);
          ret_board.pieces=pieces2;
       end
+      /*if (valid_in && captured_piece != 0 && move != 0) begin
+         $display("hi");
+         $display(board_in);
+         $display(move);
+         $display(captured_piece);
+      end*/
       king_captured={move.dst==board.kings[1], move.dst==board.kings[0]};
 
       captured = (|captured_piece)|king_captured[0]|king_captured[1];
@@ -76,17 +85,17 @@ module move_executor
       if ((move.src == board.kings[0]) || (move.src == board.kings[1])) begin
          //iVerilog giving syntax error when using signed, so have to do it the scuffed way :)
          logic[3:0] dx;
-         dx = move.dst.col - move.src.col;
+         dx = move.dst.fil - move.src.fil;
          if(dx[3]) begin
             dx=-dx;
          end
          ret_board.en_passant = 0;
          if(is_b) begin
             ret_board.kings[1] = move.dst;
-            ret_board.castle[3:2]=0;
+            ret_board.castle[1]=0;
          end else begin
             ret_board.kings[0] = move.dst;
-            ret_board.castle[1:0]=0;
+            ret_board.castle[0]=0;
          end
 
          if (move.special == SPECIAL_CASTLE || (move.special == SPECIAL_UNKNOWN && (dx > 1))) begin
@@ -106,23 +115,23 @@ module move_executor
       end
 
       if(is_b) begin
-         ret_board.castle[3:2] &= ~((is_piece[2] && (move.src.row==7)) ? {(move.src.col == 0), (move.src.col == 7)}: 0);
+         ret_board.castle[1] &= ~((is_piece[2] && (move.src.rnk==7)) ? {(move.src.fil == 0), (move.src.fil == 7)}: 0);
       end else begin
-         ret_board.castle[1:0] &= ~((is_piece[2] && (move.src.row==0)) ? {(move.src.col == 0), (move.src.col == 7)}: 0);
+         ret_board.castle[0] &= ~((is_piece[2] && (move.src.rnk==0)) ? {(move.src.fil == 0), (move.src.fil == 7)}: 0);
       end
-      ret_board.en_passant = {(is_piece[4] && (abs_diff(move.dst, move.src) == 16)), move.dst.col};
+      ret_board.en_passant = {(is_piece[4] && (abs_diff(move.dst, move.src) == 16)), move.dst.fil};
       case (move.special)
-         SPECIAL_PROMOTE_KNIGHT: is_piece=4'b0001;
-         SPECIAL_PROMOTE_BISHOP: is_piece=4'b0010;
-         SPECIAL_PROMOTE_ROOK: is_piece=4'b0100;
-         SPECIAL_PROMOTE_QUEEN: is_piece=4'b1000;
+         SPECIAL_PROMOTE_KNIGHT: is_piece_dst=4'b0001;
+         SPECIAL_PROMOTE_BISHOP: is_piece_dst=4'b0010;
+         SPECIAL_PROMOTE_ROOK: is_piece_dst=4'b0100;
+         SPECIAL_PROMOTE_QUEEN: is_piece_dst=4'b1000;
       endcase
-      if (move.special == SPECIAL_EN_PASSANT || ((move.special == SPECIAL_UNKNOWN) && is_piece[4] && (move.dst.col != move.src.col) && !captured)) begin
+      if (move.special == SPECIAL_EN_PASSANT || ((move.special == SPECIAL_UNKNOWN) && is_piece[4] && (move.dst.fil != move.src.fil) && !captured)) begin
          logic [63:0] en_passant_mask;
          en_passant_mask=coord_to_mask(is_b ? (move.dst + 8) : (move.dst - 8));
-         for(i=0; i<NB_PIECES; i++) begin
-            logic[63:0] pieces;//doing this because of iVerilog
-            logic[63:0] pieces2;
+         for(i=0; i<`NB_PIECES; i++) begin
+            logic[4:0][63:0] pieces;//doing this because of iVerilog
+            logic[4:0][63:0] pieces2;
             pieces = board.pieces;
             pieces2 = ret_board.pieces;
             captured_piece[i]= (pieces[i]&en_passant_mask)!=0;
@@ -131,10 +140,13 @@ module move_executor
          end
          captured=captured|(|captured_piece);
       end
-      for(i=0; i<NB_PIECES; i++) begin
-         logic[63:0] pieces;//doing this because of iVerilog
+      for(i=0; i<`NB_PIECES; i++) begin
+         logic[4:0][63:0] pieces;//doing this because of iVerilog
          pieces = ret_board.pieces;
          if(is_piece[i]) begin
+            pieces[i] = pieces[i] & ~src_mask;
+         end
+         if(is_piece_dst[i]) begin
             pieces[i] = pieces[i] | move_mask;
          end
          ret_board.pieces=pieces;
