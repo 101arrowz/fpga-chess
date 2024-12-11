@@ -19,6 +19,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
     output logic info_valid_out
 );
     localparam MAX_MOVES = 63;
+    // unfortunately, this seems to perform worse with 2+ sorters; stick to 1 for now
     localparam NUM_SORTERS = 1;
 
     typedef logic [$clog2(MAX_MOVES) - 1:0] move_idx_t;
@@ -46,24 +47,6 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
 
     logic [(MAX_MOVES-1):0][$bits(move_t)-1:0] move0_values;
     logic [(MAX_MOVES-1):0][$bits(eval_t)-1:0] move0_keys;
-
-    move_t cur_best;
-    eval_t cur_best_eval;
-
-    assign cur_best = move0_values[0];
-    assign cur_best_eval = {~move0_keys[0][$bits(eval_t) - 1], move0_keys[0][$bits(eval_t) - 2:0]};
-
-    stream_sorter#(.MAX_LEN(MAX_MOVES), .KEY_BITS($bits(eval_t)), .VALUE_BITS($bits(move_t))) root_best(
-        .clk_in(clk_in),
-        .rst_in(rst_in || (cur_state == EC_FINISH && cur_depth == 0)),
-        .value_in(cur_move0),
-        .key_in(move0_key),
-        .valid_in(cur_depth == 1 && cur_state == EC_FINISH && finish_latency == 0),
-        .dequeue_in(),
-        .array_out(move0_values),
-        .keys_out(move0_keys),
-        .array_len_out() // TODO
-    );
 
     logic [NUM_SORTERS - 1:0][$clog2(MAX_DEPTH) - 1:0] sort_depth;
     logic [NUM_SORTERS - 1:0][$clog2(MAX_MOVES + 1) - 1:0] sort_len;
@@ -389,6 +372,27 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
     eval_t new_alpha;
     assign new_alpha = $signed(child_eval) > $signed(pos_stack_alpha[cur_depth - 1]) ? child_eval : $signed(pos_stack_alpha[cur_depth - 1]);
 
+    move_t cur_best;
+    eval_t cur_best_eval;
+
+    assign cur_best = move0_values[0];
+    assign cur_best_eval = {~move0_keys[0][$bits(eval_t) - 1], move0_keys[0][$bits(eval_t) - 2:0]};
+
+    logic go_shallow;
+    assign go_shallow = $signed(child_eval) > $signed(pos_stack_beta[cur_depth - 1]) || pos_stack_move_idx[cur_depth - 1] >= pos_stack_num_moves[cur_depth - 1];
+
+    stream_sorter#(.MAX_LEN(MAX_MOVES), .KEY_BITS($bits(eval_t)), .VALUE_BITS($bits(move_t))) root_best(
+        .clk_in(clk_in),
+        .rst_in(rst_in || cur_state == EC_READY),
+        .value_in(cur_move0),
+        .key_in(move0_key),
+        .valid_in(cur_depth == 1 && cur_state == EC_FINISH && (finish_latency == 0 || go_shallow)),
+        .dequeue_in(),
+        .array_out(move0_values),
+        .keys_out(move0_keys),
+        .array_len_out() // TODO
+    );
+
     always_ff @(posedge clk_in) begin
         if (rst_in) begin
             cur_depth <= 0;
@@ -414,9 +418,9 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
                         cur_depth <= 0;
                         ready_out <= 0;
                         target_depth <= 1;
-                        pos_stack_alpha[0] <= -16'sd32760;
+                        pos_stack_alpha[0] <= -16'sd32700;
                         pos_stack_score[0] <= -16'sd32760;
-                        pos_stack_beta[0] <= 16'sd32760;
+                        pos_stack_beta[0] <= 16'sd32700;
                         pos_stack_move_idx[0] <= 1;
                         cur_state <= EC_NEXT;
                     end else begin
@@ -497,9 +501,9 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
                         if (target_depth < depth_in) begin
                             // iterative deepening
                             target_depth <= target_depth + 1;
-                            pos_stack_alpha[0] <= -16'sd32760;
+                            pos_stack_alpha[0] <= -16'sd32700;
                             pos_stack_score[0] <= -16'sd32760;
-                            pos_stack_beta[0] <= 16'sd32760;
+                            pos_stack_beta[0] <= 16'sd32700;
                             pos_stack_move_idx[0] <= 1;
                             cur_state <= EC_NEXT;
                         end else begin
@@ -518,7 +522,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
                             pos_stack_score[cur_depth - 1] <= child_eval;
                         end
 
-                        if ($signed(child_eval) > $signed(pos_stack_beta[cur_depth - 1]) || pos_stack_move_idx[cur_depth - 1] >= pos_stack_num_moves[cur_depth - 1]) begin
+                        if (go_shallow) begin
                             finish_latency <= 2 + 1;
                             cur_depth <= cur_depth - 1;
                         end else begin

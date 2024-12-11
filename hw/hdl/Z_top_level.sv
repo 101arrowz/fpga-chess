@@ -29,18 +29,19 @@ module top_level
     //assign rgb0 = 0; //set to 0.
     //assign rgb1 = 0; //set to 0.
 
-    wire clk_40mhz;
+    localparam CLOCK_FREQ = 40_000_000;
+    wire clk_game;
 
     clk_wiz_0_clk_wiz clkw(
       .clk_in1(clk_100mhz),
-      .clk_out1(clk_40mhz)
+      .clk_out1(clk_game)
     );
 
-    uart_receive #(.INPUT_CLOCK_FREQ(40_000_000), .BAUD_RATE(115200)) reciever (.clk_in(clk_40mhz),
+    uart_receive #(.INPUT_CLOCK_FREQ(CLOCK_FREQ), .BAUD_RATE(115200)) reciever (.clk_in(clk_game),
     .rst_in(sys_rst),
     .rx_wire_in(uart_txd_in));
     
-    uart_transmit #(.INPUT_CLOCK_FREQ(40_000_000), .BAUD_RATE(115200)) transmitter(.clk_in(clk_40mhz), 
+    uart_transmit #(.INPUT_CLOCK_FREQ(CLOCK_FREQ), .BAUD_RATE(115200)) transmitter(.clk_in(clk_game), 
     .rst_in(sys_rst),
     .tx_wire_out(uart_rxd_out));
 
@@ -52,9 +53,15 @@ module top_level
     logic move_valid;
     logic ec_ready;
     logic did_go;
+    logic [31:0] p_time;
+    logic [31:0] p_inc;
+    assign p_time = 32'sd60000;
+    assign p_inc = 32'sd1000;
+
+    logic [31:0] coord_time;
 
     uci_handler uci
-    (.clk_in(clk_40mhz), 
+    (.clk_in(clk_game), 
     .rst_in(sys_rst),
     .char_in(reciever.data_byte_out),
     .char_in_valid(reciever.new_data_out),
@@ -65,16 +72,24 @@ module top_level
     .char_out(transmitter.data_byte_in),
     .char_out_ready(~transmitter.busy_out),
     .char_out_valid(transmitter.trigger_in),
+    //.go_time(p_time),
+    //.go_inc(p_inc),
     .board_out(board),
     .board_out_valid(board_valid),
     .go(go)
     );
 
-    always_ff @(posedge clk_40mhz) begin
+    always_ff @(posedge clk_game) begin
       if (sys_rst) begin
         did_go <= 0;
+        coord_time <= 0;
       end else begin
         did_go <= did_go | go;
+        if (go) begin
+          coord_time <= (p_inc < (p_time >> 3) ? p_inc : (p_time >> 3)) * (CLOCK_FREQ / 1000);
+        end else if (coord_time > 0) begin
+          coord_time <= coord_time - 1;
+        end
       end
     end
 
@@ -83,12 +98,12 @@ module top_level
     assign led[2] = did_go;
 
     engine_coordinator ec(
-      .clk_in(clk_40mhz),
+      .clk_in(clk_game),
       .rst_in(sys_rst),
       .board_in(board),
       .board_valid_in(board_valid),
       .go_in(go),
-      .time_in(1),
+      .time_in(sw[8] ? 32'b1 : coord_time),
       .depth_in(sw[4:0]),
       .ready_out(ec_ready), // TODO
       .bestmove_out(move),
