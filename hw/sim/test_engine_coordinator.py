@@ -51,6 +51,7 @@ async def test_a(dut):
 
     board_init = (occupancies['pawn'] << 364) | (occupancies['queen'] << 300) | (occupancies['rook'] << 236) | (occupancies['bishop'] << 172) | (occupancies['knight'] << 108) | \
         (occupancies['white'] << 44) | (king_b << 38) | (king_w << 32) | (checkmate << 30) | (en_passant << 26) | (castle << 22) | (ply << 7) | (ply50)
+    board_init = 412501506796877871857922973576509435005244377754612855066526626439514056746161977768388018264037940730202487495364458655521156
 
     dut.board_in.value = board_init
     dut.board_valid_in.value = 1
