@@ -29,10 +29,10 @@ module top_level
     //assign rgb0 = 0; //set to 0.
     //assign rgb1 = 0; //set to 0.
 
-    localparam CLOCK_FREQ = 40_000_000;
+    localparam CLOCK_FREQ = 50_000_000;
     wire clk_game;
 
-    clk_wiz_0_clk_wiz clkw(
+    clk_wiz_2_clk_wiz clkw(
       .clk_in1(clk_100mhz),
       .clk_out1(clk_game)
     );

@@ -384,7 +384,7 @@ module engine_coordinator#(parameter MAX_DEPTH = 32, parameter MAX_QUIESCE = 10)
 
     stream_sorter#(.MAX_LEN(MAX_MOVES), .KEY_BITS($bits(eval_t)), .VALUE_BITS($bits(move_t))) root_best(
         .clk_in(clk_in),
-        .rst_in(rst_in || cur_state == EC_READY),
+        .rst_in(rst_in || cur_state == EC_READY || (cur_state == EC_FINISH && cur_depth == 0)),
         .value_in(cur_move0),
         .key_in(move0_key),
         .valid_in(cur_depth == 1 && cur_state == EC_FINISH && (finish_latency == 0 || go_shallow)),
